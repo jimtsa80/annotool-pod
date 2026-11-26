@@ -495,7 +495,7 @@
 	/* ------------------------------------------------------------------ status + predictions */
 	var statusTimer = null, predTimer = null, lastStatus = null, lastPredictAt = 0, lastPredictCur = null, lastModelVersion = null;
 	var lastPred = { n: 0, version: null, at: 0 }, predWait = false;
-	var noPredToastAt = 0, inNoPredRegion = false, frameToastTimer = null;
+	var noPredToastAt = 0, inNoPredRegion = false, frameToastTimer = null, predParsed = { text: null, doc: null };
 	function mapStatus(s) {
 		var raw = s.state, nt = s.next_training || {}, doc;
 		var state = raw;
@@ -549,7 +549,6 @@
 			doc.images = out;
 			lastPred = { n: n, version: doc.modelVersion || doc.model_version || lastModelVersion, at: Date.now() };
 			predWait = false;
-			inNoPredRegion = false;
 			if (putFile(PRED_FILE, JSON.stringify(doc)) && window.AnnoSync && AnnoSync.pollNow) AnnoSync.pollNow();
 			paintPanel();
 		}, function () { paintPanel(); });
@@ -776,7 +775,13 @@
 	function predHasFrame(key) {
 		var f = vfiles[PRED_FILE], doc;
 		if (!f || !f.text) return null;
-		try { doc = JSON.parse(f.text); } catch (e) { return null; }
+		if (predParsed.text !== f.text) {
+			var parsed = null;
+			try { parsed = JSON.parse(f.text); } catch (e) { parsed = null; }
+			predParsed = { text: f.text, doc: parsed };
+		}
+		doc = predParsed.doc;
+		if (!doc) return null;
 		return !!(doc.images && Object.prototype.hasOwnProperty.call(doc.images, key));
 	}
 	function ensureFrameToast() {

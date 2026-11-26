@@ -20,6 +20,7 @@
 	var lastBody = "";
 	var predictions = null;
 	var predText = "";
+	var lastSrvPredKey = null;
 	var predWarned = "";
 	var statusText = null;
 	var fileStats = {};
@@ -2474,6 +2475,12 @@
 			showForCurrent();
 			paintFramePredict();
 			paintTrainer();
+			if (window.AnnoServerMode && AnnoServerMode()) {
+				var srvKey = String(predictions.project || "") + "|" + String(predictions.modelVersion || predictions.weightsVersion || "");
+				var srvSame = (srvKey === lastSrvPredKey);
+				lastSrvPredKey = srvKey;
+				if (srvSame) return;
+			}
 			if (quiet || prepareShown || (readyToastAt && Date.now() - readyToastAt < 4000)) return;
 			cover = predictionCoverage();
 			toast(cover ? "νέες προβλέψεις: frames " + cover.from + (cover.from === cover.to ? "" : "–" + cover.to) : "νέες προβλέψεις");
