@@ -24,7 +24,7 @@
 #srvPanel[hidden] { display: none !important; }
 #srvPanel .srv-row { margin: 3px 0; }
 #srvPanel input[type=text], #srvPanel input[type=password], #srvPanel input:not([type]) { width: 100px; height: 20px; font-size: 11px; padding: 0 5px; border: 0; border-radius: 3px; color: #111; }
-#srvPanel #srvUrl { width: 232px; }
+#srvPanel #srvUrl, #srvPanel #srvWake { width: 232px; }
 #srvPanel select { height: 20px; font-size: 11px; color: #111; max-width: 220px; }
 #srvPanel button { height: 20px; font-size: 11px; padding: 0 7px; border: 0; border-radius: 3px; background: #1f7eb0; color: #fff; }
 #srvPanel a { color: #8fd0ff; }

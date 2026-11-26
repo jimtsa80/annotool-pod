@@ -23,6 +23,9 @@
 	var VNAME = "server";
 	/* on github.io the default server is the RunPod pod; served locally it stays the local anno_server */
 	var DEFAULT_URL = /\.github\.io$/.test(location.hostname) ? "https://09u3eun0nejfkv-8000.proxy.runpod.net" : "http://127.0.0.1:8765";
+	/* pod "waker": a tiny Cloudflare Worker that can ONLY start the pod when it is stopped (needs the wake key) */
+	var WAKER_URL = /\.github\.io$/.test(location.hostname) ? "https://anno-waker.jimtsa80.workers.dev" : "";
+	var WAKE_KEY = "annotool.wake.key";
 	var WINDOW = 400;
 	var RED_AFTER_MS = 10 * 60 * 1000;
 	var STATUS_MS = 4000;
@@ -37,6 +40,13 @@
 		return null;
 	}
 	function isServer() { return ls(MODE_KEY) === "server"; }
+	/* invite link  .../annotool-pod/#wake=KEY  stores the wake key once, then removes it from the address bar */
+	(function () {
+		var m = /[#&]wake=([A-Za-z0-9_-]{16,128})/.exec(location.hash || "");
+		if (!m) return;
+		ls(WAKE_KEY, m[1]);
+		try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+	})();
 	window.AnnoServerMode = isServer;
 
 	function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -131,6 +141,7 @@
 
 	/* ------------------------------------------------------------------ API + health */
 	var health = { state: "off", since: 0, timer: null, delay: 5000, info: null };
+	var wake = { active: false, busy: false, nextCheck: 0, warned: false };
 	var session = { token: ls(TOKEN_KEY) || "", user: null, families: [] };
 	try { session.user = JSON.parse(ls(USER_KEY) || "null"); } catch (e) { session.user = null; }
 
@@ -174,7 +185,7 @@
 			var was = health.state;
 			health.state = state;
 			if (state === "waking" && was !== "red") health.since = Date.now();
-			if (state === "green") { health.delay = 5000; kick(); }
+			if (state === "green") { health.delay = 5000; wake.active = false; kick(); }
 			paintPanel();
 		}
 	}
@@ -192,16 +203,48 @@
 		api("GET", "/health", undefined, { noAuth: true, timeout: 8000 }).then(function (h) {
 			health.info = h;
 			if (h && h.status === "ready") { setHealth("green"); scheduleHealth(20000); }
-			else { if (health.state !== "red") setHealth("waking"); grow(); }
+			else { if (health.state !== "red") setHealth("waking"); grow(); maybeWake(); }
 		}, function () {
 			if (health.state !== "red") setHealth("waking");
 			grow();
+			maybeWake();
 		});
+	}
+	function wakeKey() { return String(ls(WAKE_KEY) || "").trim(); }
+	function wakeApi(method, path) {
+		var ctrl = window.AbortController ? new AbortController() : null;
+		var t = ctrl ? setTimeout(function () { ctrl.abort(); }, 15000) : null;
+		return fetch(WAKER_URL + path, { method: method, headers: { "X-Wake-Key": wakeKey() }, cache: "no-store", signal: ctrl ? ctrl.signal : undefined }).then(function (res) {
+			if (t) clearTimeout(t);
+			return res.json().then(function (j) { j = j || {}; j._status = res.status; return j; }, function () { return { _status: res.status }; });
+		}, function (e) { if (t) clearTimeout(t); throw e; });
+	}
+	/* server not answering: ask the waker; if the pod is stopped, start it and keep polling /health every ~10 s */
+	function maybeWake() {
+		if (!WAKER_URL || !isServer() || wake.busy || !wakeKey()) return;
+		if (document.visibilityState === "hidden" || Date.now() < wake.nextCheck) return;
+		wake.busy = true;
+		wake.nextCheck = Date.now() + 10000;
+		wakeApi("GET", "/status").then(function (st) {
+			if (st._status === 401 || st._status === 403) {
+				if (!wake.warned) { wake.warned = true; toast("Wake key λάθος — δες στο πάνελ του Server", "warning"); }
+				return;
+			}
+			if (st.state === "stopped") {
+				wake.active = true;
+				paintPanel();
+				return wakeApi("POST", "/wake").then(function (w) {
+					if (w._status === 429) wake.nextCheck = Date.now() + 30000; /* just started by someone else / rate limited: keep waiting */
+				});
+			}
+			wake.active = st.state === "running" && wake.active; /* running but /health not ready yet: still booting */
+			if (!wake.active) paintPanel();
+		}).catch(function () {}).then(function () { wake.busy = false; });
 	}
 	function grow() {
 		if (health.state === "waking" && Date.now() - health.since > RED_AFTER_MS) setHealth("red");
 		health.delay = Math.min(30000, Math.round(health.delay * 1.4));
-		scheduleHealth(health.state === "red" ? 30000 : health.delay);
+		scheduleHealth(wake.active ? 10000 : health.state === "red" ? 30000 : health.delay);
 	}
 	function online() { return isServer() && health.state === "green"; }
 
@@ -655,6 +698,7 @@
 			'<div class="srv-row"><b>Λειτουργία</b> <label><input type="radio" name="srvModeSel" value="local"> Local</label> ' +
 			'<label><input type="radio" name="srvModeSel" value="server"> Server</label></div>' +
 			'<div class="srv-row srv-s"><input id="srvUrl" type="text" placeholder="' + DEFAULT_URL + '" autocomplete="off"></div>' +
+			(WAKER_URL ? '<div class="srv-row srv-s"><input id="srvWake" type="password" placeholder="wake key (ξύπνημα server)" autocomplete="off"></div>' : '') +
 			'<div class="srv-row srv-s" id="srvHealth"><i class="srv-light"></i> <span id="srvHealthText"></span></div>' +
 			'<form class="srv-row srv-s" id="srvLogin"><input id="srvUser" placeholder="username" autocomplete="username"> ' +
 			'<input id="srvPass" type="password" placeholder="password" autocomplete="current-password"> <button type="submit">Login</button></form>' +
@@ -688,6 +732,11 @@
 		var url = document.getElementById("srvUrl");
 		url.value = ls(URL_KEY) || DEFAULT_URL;
 		url.addEventListener("change", function () { ls(URL_KEY, this.value.trim() || null); health.state = "off"; markDown(); });
+		var wk = document.getElementById("srvWake");
+		if (wk) {
+			wk.value = wakeKey();
+			wk.addEventListener("change", function () { ls(WAKE_KEY, this.value.trim() || null); wake.warned = false; wake.nextCheck = 0; if (health.state !== "green") maybeWake(); });
+		}
 		document.getElementById("srvLogin").addEventListener("submit", function (e) {
 			e.preventDefault();
 			var u = document.getElementById("srvUser").value.trim(), p = document.getElementById("srvPass").value;
@@ -703,6 +752,7 @@
 		if (!isServer()) return { cls: "", title: "τοπική λειτουργία (Ζωντανά = τοπικός trainer)" };
 		var hs = health.state, st = lastStatus && lastStatus.state;
 		if (!session.token && hs === "green") return { cls: "srv-hint-down", title: "⚠️ Η σύνδεση έληξε, κάνε ξανά login" };
+		if (wake.active && hs !== "green") return { cls: "srv-hint-wait", title: "⏳ Ξυπνάω τον server, 1–2 λεπτά…" };
 		if (hs === "red") return { cls: "srv-hint-down", title: "⚠️ Ο server δεν απαντά" };
 		if (hs === "waking" || hs === "off") return { cls: "srv-hint-wait", title: "ξυπνάει… περίμενε" };
 		if (st === "training" || st === "training_family" || st === "preparing_training" || st === "queued")
@@ -726,8 +776,8 @@
 		if (!server) return;
 		var ht = document.getElementById("srvHealthText"), light = ui.panel.querySelector(".srv-light");
 		light.className = "srv-light srv-" + (hs === "off" ? "waking" : hs);
-		ht.textContent = hs === "green" ? (hint.title || "server ζωντανός") : hs === "red" ? "μη διαθέσιμος (δουλεύεις κανονικά, οι αλλαγές κρατιούνται)" :
-			"ξυπνάει… περίμενε · " + secs(Date.now() - (health.since || Date.now()));
+		ht.textContent = hs === "green" ? (hint.title || "server ζωντανός") : (hs === "red" && !wake.active) ? "μη διαθέσιμος (δουλεύεις κανονικά, οι αλλαγές κρατιούνται)" :
+			(wake.active ? "⏳ Ξυπνάω τον server, 1–2 λεπτά… · " : "ξυπνάει… περίμενε · ") + secs(Date.now() - (health.since || Date.now()));
 		var logged = !!session.token;
 		document.getElementById("srvLogin").style.display = logged ? "none" : "";
 		document.getElementById("srvWho").innerHTML = "";
