@@ -1,0 +1,1218 @@
+(function () {
+	var SEP = "\u0001";
+	var TARGETS_KEY = "annotool.comboTargets";
+	var EXPOSURE_KEY = "annotool.exposureDoc";
+	var EXPOSURE_BOUND_KEY = "annotool.exposureBound";
+	var LOCK_KEY = "annotool.comboLocks";
+	var VIEW_KEY = "annotool.comboView";
+	var METRIC_KEY = "annotool.comboMetric";
+	var OPEN_KEY = "annotool.comboPanelOpen";
+	var POS_KEY = "annotool.comboPanelPos";
+	var SORT_KEY = "annotool.comboSort";
+
+	var metric = "boxes";
+	var query = "";
+	var captionsOn = false;
+	var capRaf = 0;
+	var capNodes = {};
+	var rowEls = {};
+	var viewEls = {};
+	var viewQuery = "";
+	var viewOpen = false;
+	var watchedKey = "";
+	var manualWatch = false;
+	var drag = null;
+	var exposure = null;
+	var exposureSig = "";
+	var exposureRates = {};
+	var sortBySize = false;
+	var pendingExposureClear = "";
+	var openSetCache = { list: null, set: null };
+	var remainState = { list: null, sig: null, storedBare: 0 };
+
+	function fmt(n) {
+		n = n || 0;
+		try { return n.toLocaleString("el-GR"); }
+		catch (e) { return String(n); }
+	}
+
+	function searchFold(value) {
+		return String(value || "").toLowerCase().replace(/[^a-z0-9\u0370-\u03ff]+/g, "");
+	}
+
+	function comboSearchMatches(brand, location, rawQuery) {
+		var q = (rawQuery || "").trim();
+		if (!q) return true;
+		var blob = (brand || "") + " " + (location || "");
+		if (blob.toLowerCase().indexOf(q.toLowerCase()) !== -1) return true;
+		var needle = searchFold(q);
+		if (!needle) return true;
+		return searchFold(blob).indexOf(needle) !== -1;
+	}
+
+	function projectKey() {
+		var name = "";
+		if (typeof prefs !== "undefined" && prefs && prefs.projectRoot) name = prefs.projectRoot;
+		else if (typeof prefs !== "undefined" && prefs && prefs.projectName) name = prefs.projectName;
+		else if (typeof allAnnotations !== "undefined" && allAnnotations && allAnnotations.project) name = allAnnotations.project;
+		return name || "_";
+	}
+
+	function loadJson(key) {
+		try { return JSON.parse(localStorage.getItem(key) || "{}") || {}; }
+		catch (e) { return {}; }
+	}
+
+	function targetsForProject() {
+		var all = loadJson(TARGETS_KEY);
+		return all[projectKey()] || {};
+	}
+
+	function replaceTargets(map) {
+		var all = loadJson(TARGETS_KEY);
+		all[projectKey()] = map || {};
+		try { localStorage.setItem(TARGETS_KEY, JSON.stringify(all)); }
+		catch (e) {}
+	}
+
+	function normName(value) {
+		return String(value || "").toLowerCase().replace(/\.zip$/i, "").replace(/[^a-z0-9]+/g, "");
+	}
+
+	function exposureNames() {
+		var names = [];
+		if (typeof activeCluster !== "undefined" && activeCluster) names.push(activeCluster);
+		if (typeof prefs !== "undefined" && prefs) {
+			if (prefs.projectName) names.push(prefs.projectName);
+			if (prefs.projectRoot) names.push(prefs.projectRoot);
+		}
+		if (typeof allAnnotations !== "undefined" && allAnnotations && allAnnotations.project) names.push(allAnnotations.project);
+		return names;
+	}
+
+	function matchExposure(doc) {
+		var files = (doc && doc.files) || [];
+		var names = exposureNames();
+		var best = null, bestScore = 0, tied = false;
+		var i, j, k, file, keys, name, score;
+		for (i = 0; i < files.length; i++) {
+			file = files[i];
+			keys = [normName(file.file), normName(file.sheet)];
+			score = 0;
+			for (j = 0; j < names.length; j++) {
+				name = normName(names[j]);
+				if (name.length < 12) continue;
+				for (k = 0; k < keys.length; k++) {
+					if (!keys[k]) continue;
+					if (keys[k].indexOf(name) !== -1 || name.indexOf(keys[k]) !== -1) {
+						score = Math.max(score, Math.min(name.length, keys[k].length));
+					}
+				}
+			}
+			if (score > bestScore) { best = file; bestScore = score; tied = false; }
+			else if (score && score === bestScore) tied = true;
+		}
+		if (best && !tied && bestScore >= 12) {
+			return {
+				id: normName(best.file) || normName(best.sheet),
+				label: String(best.file || best.sheet || "").replace(/\.zip$/i, ""),
+				combos: best.combos || []
+			};
+		}
+		var summary = doc && doc.summary;
+		return { id: "summary", label: "όλα τα αρχεία μαζί", combos: (summary && summary.combos) || [] };
+	}
+
+	function useHitsMetric() {
+		if (metric === "hits") return;
+		metric = "hits";
+		try { localStorage.setItem(METRIC_KEY, "hits"); } catch (e) {}
+		var buttons = document.querySelectorAll("#comboMetric button");
+		for (var i = 0; i < buttons.length; i++) {
+			buttons[i].classList.toggle("on", buttons[i].getAttribute("data-metric") === "hits");
+		}
+	}
+
+	function relatedProjectKeys() {
+		var keys = [], seen = {}, add = function (k) {
+			if (k && k !== "_" && !seen[k]) { seen[k] = true; keys.push(k); }
+		};
+		if (typeof prefs !== "undefined" && prefs) {
+			add(prefs.projectRoot);
+			add(prefs.projectName);
+			if (prefs.prefsFilename) add(String(prefs.prefsFilename).replace(/\.txt$/i, ""));
+		}
+		if (typeof allAnnotations !== "undefined" && allAnnotations) add(allAnnotations.project);
+		add(projectKey());
+		return keys;
+	}
+
+	function clearTargetsForKnownKeys() {
+		var all = loadJson(TARGETS_KEY);
+		var keys = relatedProjectKeys();
+		var i;
+		for (i = 0; i < keys.length; i++) delete all[keys[i]];
+		try { localStorage.setItem(TARGETS_KEY, JSON.stringify(all)); }
+		catch (e) {}
+	}
+
+	function clearExposurePlan() {
+		exposure = null;
+		exposureSig = "";
+		exposureRates = {};
+		pendingExposureClear = "";
+		try {
+			localStorage.removeItem(EXPOSURE_KEY);
+			localStorage.removeItem(EXPOSURE_BOUND_KEY);
+		} catch (e) {}
+		clearTargetsForKnownKeys();
+		paintExposureHint(null);
+	}
+
+	function flushPendingExposureClear() {
+		if (!pendingExposureClear || projectKey() === "_") return;
+		clearTargetsForKnownKeys();
+		exposureRates = {};
+		exposureSig = "";
+		pendingExposureClear = "";
+		paintExposureHint(null);
+	}
+
+	function paintExposureHint(match) {
+		var el = document.getElementById("comboTargetHint");
+		if (!el) return;
+		if (!match || !match.combos || !match.combos.length) {
+			el.style.display = "none";
+			el.textContent = "";
+			return;
+		}
+		el.style.display = "";
+		el.textContent = match.label + " · ρυθμός ανά ώρα, για να μοιράζονται στο αρχείο και όχι στο τέλος";
+	}
+
+	function hourlyRate(brand, location, combo) {
+		if (combo && combo.secondsPerHour) return Number(combo.secondsPerHour) || 0;
+		var files = (exposure && exposure.files) || [];
+		var i, j, list, other;
+		for (i = 0; i < files.length; i++) {
+			list = files[i].combos || [];
+			for (j = 0; j < list.length; j++) {
+				other = list[j];
+				if (other.brand === brand && other.location === location && other.secondsPerHour) return Number(other.secondsPerHour) || 0;
+			}
+		}
+		return 0;
+	}
+
+	function applyExposureMatch() {
+		if (!exposure || projectKey() === "_") return;
+		var match = matchExposure(exposure);
+		paintExposureHint(match);
+		var sig = projectKey() + "\n" + match.id;
+		if (sig === exposureSig) return;
+		exposureSig = sig;
+		var map = {}, rates = {}, i, combo, n, key, rate;
+		for (i = 0; i < match.combos.length; i++) {
+			combo = match.combos[i];
+			n = Math.round(Number(combo.expectedSeconds) || 0);
+			if (!n || !combo.brand || !combo.location) continue;
+			key = comboKey(combo.brand, combo.location);
+			map[key] = n;
+			rate = hourlyRate(combo.brand, combo.location, combo);
+			if (rate) rates[key] = rate;
+		}
+		exposureRates = rates;
+		replaceTargets(map);
+		try { localStorage.setItem(EXPOSURE_BOUND_KEY, projectKey()); } catch (e) {}
+		useHitsMetric();
+	}
+
+	function rememberExposure(doc) {
+		exposure = doc;
+		exposureSig = "";
+		applyExposureMatch();
+		refresh();
+	}
+
+	function setTarget(key, value) {
+		var all = loadJson(TARGETS_KEY);
+		var pk = projectKey();
+		if (!all[pk]) all[pk] = {};
+		if (value === "" || value === null || isNaN(value)) delete all[pk][key];
+		else all[pk][key] = value;
+		try { localStorage.setItem(TARGETS_KEY, JSON.stringify(all)); }
+		catch (e) {}
+	}
+
+	function locksForProject() {
+		var all = loadJson(LOCK_KEY);
+		var list = all[projectKey()];
+		return Array.isArray(list) ? list : [];
+	}
+
+	function setLocks(list) {
+		var all = loadJson(LOCK_KEY);
+		var pk = projectKey();
+		if (!list || !list.length) delete all[pk];
+		else all[pk] = list;
+		try { localStorage.setItem(LOCK_KEY, JSON.stringify(all)); }
+		catch (e) {}
+	}
+
+	function toggleLock(key) {
+		var list = locksForProject();
+		var at = list.indexOf(key);
+		if (at >= 0) list.splice(at, 1);
+		else list.push(key);
+		setLocks(list);
+	}
+
+	function viewCombos() {
+		var list = viewsForProject();
+		var out = [], i, parts;
+		for (i = 0; i < list.length; i++) {
+			parts = list[i].split(SEP);
+			out.push({ brand: (parts[0] || "").trim(), location: parts.slice(1).join(SEP).trim() });
+		}
+		return out;
+	}
+
+	function viewsForProject() {
+		var all = loadJson(VIEW_KEY);
+		var list = all[projectKey()];
+		return Array.isArray(list) ? list : [];
+	}
+
+	function setViews(list) {
+		var all = loadJson(VIEW_KEY);
+		var pk = projectKey();
+		if (!list || !list.length) delete all[pk];
+		else all[pk] = list;
+		try { localStorage.setItem(VIEW_KEY, JSON.stringify(all)); }
+		catch (e) {}
+	}
+
+	function lockedCombos() {
+		var list = locksForProject();
+		var out = [], i, parts;
+		for (i = 0; i < list.length; i++) {
+			parts = list[i].split(SEP);
+			out.push({ brand: (parts[0] || "").trim(), location: parts.slice(1).join(SEP).trim() });
+		}
+		return out;
+	}
+
+	function comboKey(brand, location) {
+		return (brand || "") + SEP + (location || "");
+	}
+
+	function useLiveBoard() {
+		return typeof brd !== "undefined" && brd && brd.objectsList &&
+			typeof imName !== "undefined" && imName && !imReadFlag;
+	}
+
+	function addCount(map, brand, location, hits, onThisFrame) {
+		brand = (brand || "").trim();
+		location = (location || "").trim();
+		if (!brand || !location) return;
+		var key = comboKey(brand, location);
+		if (!map[key]) map[key] = { key: key, brand: brand, location: location, boxes: 0, hits: 0, here: 0 };
+		map[key].boxes += 1;
+		map[key].hits += parseInt(hits, 10) || 0;
+		if (onThisFrame) map[key].here += 1;
+	}
+
+	function eachBoardPolygon(fn) {
+		if (!brd || !brd.objectsList) return;
+		var list = brd.objectsList;
+		for (var i = 0; i < list.length; i++) {
+			var o = list[i];
+			if (!o || o.elType !== "polygon" || o._liveSuggest) continue;
+			if (o.visProp && o.visProp.visible === false) continue;
+			fn(o);
+		}
+	}
+
+	function openNameSet() {
+		var list, set, k;
+		list = (typeof imIndices !== "undefined" && imIndices && imIndices.length) ? imIndices : null;
+		if (list && openSetCache.list === list && openSetCache.set) return openSetCache.set;
+		set = {};
+		if (list) {
+			for (k = 0; k < list.length; k++) if (list[k]) set[list[k]] = 1;
+		}
+		openSetCache.list = list;
+		openSetCache.set = list ? set : null;
+		return openSetCache.set;
+	}
+
+	function boxedSignature(images) {
+		var n = 0, name;
+		for (name in images) {
+			if (!images.hasOwnProperty(name)) continue;
+			if (images[name] && images[name].annotations && images[name].annotations.length) n++;
+		}
+		return n;
+	}
+
+	function collect() {
+		var map = {};
+		var live = useLiveBoard();
+		var images = (typeof allAnnotations !== "undefined" && allAnnotations && allAnnotations.images) || {};
+		// Only frames of the folder that is open now; stale keys (other folders,
+		// an earlier parent-folder session) must not show up in the counts.
+		var openSet = null;
+		if (typeof imIndices !== "undefined" && imIndices && imIndices.length) {
+			openSet = openNameSet();
+		} else if (!live) {
+			images = {};
+		}
+		for (var name in images) {
+			if (!images.hasOwnProperty(name)) continue;
+			if (openSet && !openSet[name]) continue;
+			if (live && name === imName) continue;
+			var anns = images[name].annotations || [];
+			for (var i = 0; i < anns.length; i++) {
+				addCount(map, anns[i].brand, anns[i].tpoint, anns[i].hits, false);
+			}
+		}
+		if (live) {
+			eachBoardPolygon(function (o) {
+				var a = o.annotation || {};
+				addCount(map, a.brand, a.tpoint, a.hits, true);
+			});
+		}
+		return map;
+	}
+
+	function listSelection() {
+		var id = $("#brands ul li.brand.selected").attr("id") || "";
+		var parts = id.split("__");
+		var brand = parts.length > 1 ? parts.slice(1).join("__") : "";
+		var location = ($("#tpoints ul li.selected").text() || "").trim();
+		if (!brand || !location) return null;
+		return { brand: brand, location: location };
+	}
+
+	function boxSelection() {
+		if (typeof highlighted === "undefined" || !highlighted || highlighted.length !== 1) return null;
+		var a = highlighted[0] && highlighted[0].annotation;
+		if (!a || !(a.brand || "").trim() || !(a.tpoint || "").trim()) return null;
+		return { brand: a.brand.trim(), location: a.tpoint.trim() };
+	}
+
+	function activeCombo() {
+		return boxSelection() || listSelection();
+	}
+
+	function fileProgress() {
+		if (typeof imIndices === "undefined" || !imIndices || !imIndices.length) return 0;
+		var index = (typeof imIndex === "number" && imIndex >= 0) ? imIndex + 1 : 0;
+		if (!index) return 0;
+		return Math.max(0, Math.min(1, index / imIndices.length));
+	}
+
+	function paceDue(target) {
+		var progress = fileProgress();
+		if (!target || progress < 0.08) return 0;
+		return Math.round(target * progress);
+	}
+
+	function decorate(row, targets) {
+		var value = metric === "hits" ? row.hits : row.boxes;
+		var target = parseInt(targets[row.key], 10);
+		if (!target) target = 0;
+		var state = "";
+		var pct = 0;
+		var hint = "";
+		if (target) {
+			pct = Math.max(0, Math.min(100, Math.round(value / target * 100)));
+			var diff = target - value;
+			if (diff > 0) { state = value >= target * 0.85 ? "near" : "ok"; hint = "λείπουν " + fmt(diff); }
+			else if (diff < 0) { state = "over"; hint = "πάνω " + fmt(-diff); }
+			else { state = "near"; hint = "ακριβώς στον στόχο"; }
+			var due = paceDue(target);
+			if (due > 0) {
+				var pace = "ως εδώ ~" + fmt(due);
+				if (due >= 8 && value < due * 0.75) pace = "πίσω, " + pace;
+				hint = hint ? (hint + " · " + pace) : pace;
+			}
+		}
+		row.value = value;
+		row.target = target;
+		row.rate = exposureRates[row.key] || 0;
+		row.state = state;
+		row.pct = pct;
+		row.hint = hint;
+		row.other = metric === "hits" ? (fmt(row.boxes) + " τετράγωνα") : ("hits " + fmt(row.hits));
+		return row;
+	}
+
+	function sortedRows(map) {
+		var targets = targetsForProject();
+		var k, parts;
+		for (k in targets) {
+			if (!targets.hasOwnProperty(k) || map[k]) continue;
+			parts = k.split(SEP);
+			map[k] = { key: k, brand: parts[0] || "", location: parts.slice(1).join(SEP), boxes: 0, hits: 0, here: 0 };
+		}
+		var rows = [];
+		for (var k in map) if (map.hasOwnProperty(k)) rows.push(decorate(map[k], targets));
+		var locked = locksForProject();
+		rows.sort(function (a, b) {
+			var aHeld = locked.indexOf(a.key) !== -1;
+			var bHeld = locked.indexOf(b.key) !== -1;
+			if (aHeld !== bHeld) return aHeld ? -1 : 1;
+			if (sortBySize && b.target !== a.target) return b.target - a.target;
+			if ((a.here > 0) !== (b.here > 0)) return a.here > 0 ? -1 : 1;
+			if (b.value !== a.value) return b.value - a.value;
+			return (a.brand + a.location).localeCompare(b.brand + b.location);
+		});
+		return rows;
+	}
+
+	function buildRow(row) {
+		var el = document.createElement("div");
+		el.className = "combo-row";
+		el._comboKey = row.key;
+		el.innerHTML =
+			'<div class="combo-bar"></div>' +
+			'<div class="combo-main"><span class="combo-name"></span><span class="combo-num"></span></div>' +
+			'<div class="combo-meta"><span class="combo-here"></span><span class="combo-rate"></span><span class="combo-sub"></span>' +
+			'<label class="combo-pin-label" title="μένει πάνω στη λίστα των συνδυασμών"><input class="combo-pin" type="checkbox"> κράτα</label>' +
+			'<label class="combo-target-label">στόχος <input class="combo-target" type="number" min="0" step="1"></label></div>';
+		return el;
+	}
+
+	function updateRow(el, row) {
+		el.querySelector(".combo-name").textContent = row.brand + " | " + row.location;
+		el.querySelector(".combo-num").textContent = row.target ? (fmt(row.value) + " / " + fmt(row.target)) : fmt(row.value);
+		var sub = row.hint ? (row.hint + " · " + row.other) : row.other;
+		el.querySelector(".combo-sub").textContent = sub;
+		var rateEl = el.querySelector(".combo-rate");
+		if (rateEl) {
+			rateEl.textContent = row.rate ? ("ρυθμός " + fmt(Math.round(row.rate)) + "/ώρα") : "";
+			rateEl.style.display = row.rate ? "" : "none";
+		}
+		var here = el.querySelector(".combo-here");
+		if (row.here) {
+			here.style.display = "";
+			here.textContent = row.here > 1 ? ("εδώ " + row.here) : "εδώ";
+		} else {
+			here.style.display = "none";
+		}
+		var input = el.querySelector(".combo-target");
+		if (document.activeElement !== input) input.value = row.target ? String(row.target) : "";
+		el.querySelector(".combo-bar").style.width = (row.target ? row.pct : 0) + "%";
+		el.classList.toggle("is-over", row.state === "over");
+		el.classList.toggle("is-near", row.state === "near");
+		el.classList.toggle("is-ok", row.state === "ok");
+		el.classList.toggle("is-here", row.here > 0);
+		el.classList.toggle("is-watched", row.key === watchedKey);
+		var locked = locksForProject();
+		var held = locked.indexOf(row.key) !== -1;
+		el.classList.toggle("is-locked", held);
+		var pin = el.querySelector(".combo-pin");
+		if (pin && document.activeElement !== pin) pin.checked = held;
+		var q = query.trim();
+		var matchesQuery = comboSearchMatches(row.brand, row.location, q);
+		el.style.display = (held || matchesQuery) ? "" : "none";
+	}
+
+	function paintList(rows) {
+		var list = document.getElementById("comboList");
+		var empty = document.getElementById("comboEmpty");
+		var seen = {};
+		var visible = 0;
+		var freeze = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("combo-target") && list.contains(document.activeElement);
+		for (var i = 0; i < rows.length; i++) {
+			var row = rows[i];
+			seen[row.key] = true;
+			var el = rowEls[row.key];
+			if (!el) {
+				el = buildRow(row);
+				rowEls[row.key] = el;
+				list.appendChild(el);
+			}
+			updateRow(el, row);
+			if (el.style.display !== "none") visible += 1;
+		}
+		for (var key in rowEls) {
+			if (!rowEls.hasOwnProperty(key) || seen[key]) continue;
+			if (document.activeElement && rowEls[key].contains(document.activeElement)) continue;
+			if (rowEls[key].parentNode) rowEls[key].parentNode.removeChild(rowEls[key]);
+			delete rowEls[key];
+		}
+		if (!freeze) {
+			for (var j = 0; j < rows.length; j++) {
+				var node = rowEls[rows[j].key];
+				if (node && list.children[j] !== node) list.insertBefore(node, list.children[j] || null);
+			}
+		}
+		var count = document.getElementById("comboPanelCount");
+		if (count) {
+			var lockedCount = locksForProject().length;
+			count.textContent = lockedCount ? (lockedCount + " κρατημένα") : (rows.length ? (rows.length + "") : "");
+		}
+		var clearBtn = document.getElementById("comboLockClear");
+		if (clearBtn) clearBtn.classList.toggle("on", locksForProject().length > 0);
+		if (empty) {
+			empty.style.display = visible ? "none" : "block";
+			empty.textContent = rows.length ? "Κανένα αποτέλεσμα." : "Ακόμα δεν υπάρχει κανένας συνδυασμός.";
+		}
+	}
+
+	function viewLabel(rows) {
+		var views = viewsForProject();
+		if (!views.length) return "όλες οι εικόνες";
+		var names = [];
+		for (var i = 0; i < rows.length; i++) {
+			if (views.indexOf(rows[i].key) !== -1) names.push(rows[i].brand + " | " + rows[i].location);
+		}
+		if (!names.length) return views.length + " συνδυασμοί";
+		if (names.length === 1) return names[0];
+		return names.length + ": " + names.join(" · ");
+	}
+
+	function paintView(rows) {
+		var btn = document.getElementById("comboViewBtn");
+		var menu = document.getElementById("comboViewMenu");
+		var list = document.getElementById("comboViewList");
+		if (btn) {
+			btn.textContent = viewLabel(rows);
+			btn.classList.toggle("on", viewsForProject().length > 0);
+		}
+		if (menu) menu.classList.toggle("open", viewOpen);
+		if (!list) return;
+		var views = viewsForProject();
+		var q = viewQuery.trim();
+		var ordered = rows.slice().sort(function (a, b) {
+			var aHeld = views.indexOf(a.key) !== -1;
+			var bHeld = views.indexOf(b.key) !== -1;
+			if (aHeld !== bHeld) return aHeld ? -1 : 1;
+			return (a.brand + a.location).localeCompare(b.brand + b.location);
+		});
+		var seen = {};
+		var freeze = document.activeElement && list.contains(document.activeElement);
+		for (var i = 0; i < ordered.length; i++) {
+			var row = ordered[i];
+			seen[row.key] = true;
+			var el = viewEls[row.key];
+			if (!el) {
+				el = document.createElement("label");
+				el.className = "combo-view-row";
+				el._comboKey = row.key;
+				el.innerHTML = '<input type="checkbox" class="combo-view-pin"><span class="combo-view-name"></span>';
+				viewEls[row.key] = el;
+				list.appendChild(el);
+			}
+			el.querySelector(".combo-view-name").textContent = row.brand + " | " + row.location;
+			var pin = el.querySelector(".combo-view-pin");
+			var held = views.indexOf(row.key) !== -1;
+			if (pin && document.activeElement !== pin) pin.checked = held;
+			el.classList.toggle("is-on", held);
+			el.style.display = (held || comboSearchMatches(row.brand, row.location, q)) ? "" : "none";
+		}
+		for (var key in viewEls) {
+			if (!viewEls.hasOwnProperty(key) || seen[key]) continue;
+			if (viewEls[key].parentNode) viewEls[key].parentNode.removeChild(viewEls[key]);
+			delete viewEls[key];
+		}
+		if (!freeze) {
+			for (var j = 0; j < ordered.length; j++) {
+				var node = viewEls[ordered[j].key];
+				if (node && list.children[j] !== node) list.insertBefore(node, list.children[j] || null);
+			}
+		}
+	}
+
+	function followView() {
+		var combos = viewCombos();
+		if (!combos.length) return;
+		if (typeof imName !== "undefined" && typeof imageHasAnyCombo === "function" && imageHasAnyCombo(imName, combos)) return;
+		if (typeof goToFilteredStart === "function") goToFilteredStart();
+	}
+
+	function paintGlance(map, rows) {
+		var glance = document.getElementById("comboGlance");
+		var numEl = document.getElementById("comboGlanceNum");
+		var hintEl = document.getElementById("comboGlanceHint");
+		var bar = document.getElementById("comboGlanceBar");
+		if (!glance || !numEl) return;
+
+		paintView(rows);
+		var row = watchedKey && map[watchedKey] ? decorate(map[watchedKey], targetsForProject()) : null;
+		if (!row && watchedKey) {
+			var parts = watchedKey.split(SEP);
+			row = decorate({
+				key: watchedKey, brand: parts[0] || "", location: parts.slice(1).join(SEP),
+				boxes: 0, hits: 0, here: 0
+			}, targetsForProject());
+		}
+
+		glance.classList.remove("is-near", "is-over", "is-ok");
+		var lockedCount = locksForProject().length;
+		if (!row) {
+			var boxes = 0, hits = 0;
+			for (var i = 0; i < rows.length; i++) { boxes += rows[i].boxes; hits += rows[i].hits; }
+			numEl.textContent = rows.length ? fmt(metric === "hits" ? hits : boxes) : "";
+			hintEl.textContent = rows.length
+				? ((lockedCount ? ("κρατημένα " + lockedCount + " · ") : "") + (metric === "hits" ? (fmt(boxes) + " τετράγωνα") : ("hits " + fmt(hits))))
+				: (lockedCount ? ("κρατημένα " + lockedCount) : "");
+			bar.className = "";
+			return;
+		}
+
+		if (row.state) glance.classList.add("is-" + row.state);
+		numEl.textContent = row.target ? (fmt(row.value) + " / " + fmt(row.target)) : fmt(row.value);
+		var unit = metric === "hits" ? "hits" : "τετράγωνα";
+		var hereBit = row.here ? (" · εδώ " + row.here) : "";
+		hintEl.textContent = (lockedCount ? ("κρατημένα " + lockedCount + " · ") : "") + (row.hint ? row.hint + " · " : "") + unit + " · " + row.other + hereBit;
+		if (row.target) {
+			bar.className = "on";
+			bar.querySelector("i").style.width = row.pct + "%";
+		} else {
+			bar.className = "";
+		}
+	}
+
+	function currentFrameAnnotated() {
+		var found = false;
+		eachBoardPolygon(function (o) {
+			var a = o.annotation || {};
+			if ((a.brand || "").trim() && (a.tpoint || "").trim()) found = true;
+		});
+		return found;
+	}
+
+	function paintRemaining() {
+		var el = document.getElementById("howmanyleft");
+		if (!el) return;
+		if (typeof imIndices === "undefined" || !imIndices || !imIndices.length) {
+			el.textContent = "";
+			el.title = "";
+			return;
+		}
+		var total = imIndices.length;
+		var index = (typeof imIndex === "number" && imIndex >= 0) ? imIndex : 0;
+		var ahead = Math.max(0, total - index);
+		var images = (typeof allAnnotations !== "undefined" && allAnnotations && allAnnotations.images) || {};
+		var live = useLiveBoard();
+		var liveDone = live && currentFrameAnnotated();
+		var sig = boxedSignature(images);
+		var storedBare, i, name, stored, bare;
+		if (remainState.list !== imIndices || remainState.sig !== sig) {
+			storedBare = 0;
+			for (i = 0; i < total; i++) {
+				name = imIndices[i];
+				if (!(images[name] && images[name].annotations && images[name].annotations.length)) storedBare++;
+			}
+			remainState.list = imIndices;
+			remainState.sig = sig;
+			remainState.storedBare = storedBare;
+		} else {
+			storedBare = remainState.storedBare;
+		}
+		bare = storedBare;
+		if (live && typeof imName !== "undefined" && imName) {
+			stored = images[imName] && images[imName].annotations && images[imName].annotations.length;
+			if (stored && !liveDone) bare++;
+			if (!stored && liveDone) bare--;
+		}
+		if (bare < 0) bare = 0;
+		var text = "απομένουν " + fmt(ahead) + " · χωρίς annotation " + fmt(bare);
+		var tip = "Από αυτή την εικόνα ως το τέλος: " + ahead + ". Εικόνες χωρίς κουτί: " + bare + " από " + total + ".";
+		if (el.textContent !== text) el.textContent = text;
+		if (el.title !== tip) el.title = tip;
+	}
+
+	function refresh() {
+		flushPendingExposureClear();
+		applyExposureMatch();
+		if (!manualWatch) {
+			var follow = listSelection() || boxSelection();
+			if (follow) watchedKey = comboKey(follow.brand, follow.location);
+		}
+		var map = collect();
+		var rows = sortedRows(map);
+		paintList(rows);
+		paintGlance(map, rows);
+		paintRemaining();
+		paintLockFocus();
+	}
+
+	function paintLockFocus() {
+		if (typeof brd === "undefined" || !brd) return;
+		var views = viewsForProject();
+		var on = views.length > 0;
+		eachBoardPolygon(function (o) {
+			var a = o.annotation || {};
+			var key = comboKey((a.brand || "").trim(), (a.tpoint || "").trim());
+			var fade = on && views.indexOf(key) === -1;
+			var op = fade ? "0.14" : "";
+			if (o.rendNode) o.rendNode.style.opacity = op;
+			if (o.borders) {
+				for (var b in o.borders) {
+					if (o.borders[b] && o.borders[b].rendNode) o.borders[b].rendNode.style.opacity = op;
+				}
+			}
+		});
+	}
+
+	function setMetric(next) {
+		metric = next === "hits" ? "hits" : "boxes";
+		try { localStorage.setItem(METRIC_KEY, metric); } catch (e) {}
+		var buttons = document.querySelectorAll("#comboMetric button");
+		for (var i = 0; i < buttons.length; i++) {
+			buttons[i].classList.toggle("on", buttons[i].getAttribute("data-metric") === metric);
+		}
+		refresh();
+	}
+
+	function placePanel() {
+		var panel = document.getElementById("comboPanel");
+		if (!panel) return;
+		var saved = loadJson(POS_KEY);
+		if (saved && typeof saved.left === "number" && typeof saved.top === "number") {
+			var maxLeft = Math.max(8, window.innerWidth - 80);
+			var maxTop = Math.max(8, window.innerHeight - 80);
+			panel.style.left = Math.max(8, Math.min(saved.left, maxLeft)) + "px";
+			panel.style.top = Math.max(8, Math.min(saved.top, maxTop)) + "px";
+			panel.style.right = "auto";
+			return;
+		}
+		var gutter = (window.innerWidth - 1360) / 2;
+		panel.style.top = "132px";
+		if (gutter >= 300) {
+			panel.style.right = "12px";
+			panel.style.left = "auto";
+		} else {
+			panel.style.right = "12px";
+			panel.style.left = "auto";
+		}
+	}
+
+	function setPanel(open) {
+		var panel = document.getElementById("comboPanel");
+		if (!panel) return;
+		if (open) placePanel();
+		panel.classList.toggle("open", !!open);
+		panel.setAttribute("aria-hidden", open ? "false" : "true");
+		var btn = document.getElementById("btn_combos");
+		if (btn) btn.classList.toggle("on", !!open);
+		try { localStorage.setItem(OPEN_KEY, open ? "1" : "0"); } catch (e) {}
+		if (open) refresh();
+	}
+
+	function togglePanel() {
+		var panel = document.getElementById("comboPanel");
+		setPanel(!(panel && panel.classList.contains("open")));
+	}
+
+	function screenPoint(x, y) {
+		try {
+			var c = new JXG.Coords(JXG.COORDS_BY_USER, [x, y], brd);
+			return { x: c.scrCoords[1], y: c.scrCoords[2] };
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function topLeft(poly) {
+		var parents = poly.getParents ? poly.getParents() : [];
+		var minX = Infinity, minY = Infinity;
+		for (var i = 0; i < parents.length; i++) {
+			var p = brd.objects[parents[i]];
+			if (!p || typeof p.X !== "function") continue;
+			var s = screenPoint(p.X(), p.Y());
+			if (!s) continue;
+			if (s.x < minX) minX = s.x;
+			if (s.y < minY) minY = s.y;
+		}
+		if (minX === Infinity) return null;
+		return { x: minX, y: minY };
+	}
+
+	function polyBounds(poly) {
+		var parents = poly.getParents ? poly.getParents() : [];
+		var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
+		for (var i = 0; i < parents.length; i++) {
+			var p = brd.objects[parents[i]];
+			if (!p || typeof p.X !== "function") continue;
+			var s = screenPoint(p.X(), p.Y());
+			if (!s) continue;
+			if (s.x < minX) minX = s.x;
+			if (s.y < minY) minY = s.y;
+			if (s.x > maxX) maxX = s.x;
+			if (s.y > maxY) maxY = s.y;
+			n++;
+		}
+		if (n < 2) return null;
+		return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+	}
+
+	function selectedReadyPoly() {
+		if (typeof highlighted === "undefined" || !highlighted || highlighted.length !== 1) return null;
+		var poly = highlighted[0];
+		if (!poly || !poly.annotation) return null;
+		if (poly.visProp && poly.visProp.visible === false) return null;
+		if (!(poly.annotation.brand || "").trim()) return null;
+		return poly;
+	}
+
+	function hitsPadEl() {
+		var el = document.getElementById("hitsPad");
+		if (el) return el;
+		var board = document.getElementById("box");
+		if (!board) return null;
+		el = document.createElement("div");
+		el.id = "hitsPad";
+		el.innerHTML = '<button type="button" data-dir="-1">−</button><span></span><button type="button" data-dir="1">+</button>';
+		el.addEventListener("mousedown", function (e) { e.stopPropagation(); e.preventDefault(); });
+		el.addEventListener("mouseup", function (e) { e.stopPropagation(); e.preventDefault(); });
+		el.addEventListener("click", function (e) {
+			e.stopPropagation();
+			e.preventDefault();
+			var btn = e.target.closest ? e.target.closest("button") : null;
+			if (!btn) return;
+			nudgeHits(parseInt(btn.getAttribute("data-dir"), 10) || 0);
+		});
+		board.appendChild(el);
+		return el;
+	}
+
+	function nudgeHits(dir) {
+		var poly = selectedReadyPoly();
+		if (!poly || !dir) return;
+		var n = parseInt(poly.annotation.hits, 10);
+		if (isNaN(n) || n < 1) n = 1;
+		n = Math.max(1, Math.min(15, n + dir));
+		poly.annotation.hits = n;
+		var hits = document.getElementById("hits");
+		if (hits) hits.value = String(n);
+		paintHitsPad();
+	}
+
+	function paintHitsPad() {
+		var el = hitsPadEl();
+		if (!el) return;
+		var poly = (!window.presetGrab) ? selectedReadyPoly() : null;
+		if (!poly) {
+			el.classList.remove("on");
+			return;
+		}
+		var rect = polyBounds(poly);
+		var board = document.getElementById("box");
+		if (!rect || !board) {
+			el.classList.remove("on");
+			return;
+		}
+		el.classList.add("on");
+		var label = el.querySelector("span");
+		var shown = parseInt(poly.annotation.hits, 10);
+		if (isNaN(shown) || shown < 1) shown = 1;
+		if (label) label.textContent = shown + " hits";
+		var width = el.offsetWidth || 120;
+		var height = el.offsetHeight || 34;
+		var left = rect.x + rect.w + 8;
+		if (left + width > board.clientWidth - 4) left = Math.max(4, rect.x - width - 8);
+		var top = rect.y;
+		if (top + height > board.clientHeight - 4) top = Math.max(4, board.clientHeight - height - 4);
+		el.style.left = left + "px";
+		el.style.top = top + "px";
+	}
+
+	var hitsRaf = 0;
+	function tickHits() {
+		paintHitsPad();
+		hitsRaf = requestAnimationFrame(tickHits);
+	}
+
+	function captionText(ann) {
+		var brand = (ann.brand || "").trim();
+		var location = (ann.tpoint || "").trim();
+		var hits = parseInt(ann.hits, 10) || 0;
+		if (!brand && !location) return { text: "NULL", empty: true };
+		return { text: (brand || "—") + "|" + (location || "—") + "|" + hits, empty: false };
+	}
+
+	function ensureCaptionLayer() {
+		var box = document.getElementById("box");
+		if (!box) return null;
+		var layer = document.getElementById("annoCaptions");
+		if (!layer || layer.parentNode !== box) {
+			if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
+			layer = document.createElement("div");
+			layer.id = "annoCaptions";
+			box.appendChild(layer);
+			capNodes = {};
+		}
+		return layer;
+	}
+
+	function tickCaptions() {
+		capRaf = 0;
+		if (!captionsOn) return;
+		var layer = ensureCaptionLayer();
+		if (layer && brd && brd.objectsList) {
+			var seen = {};
+			eachBoardPolygon(function (o) {
+				if (!o.annotation) return;
+				var id = o.id;
+				seen[id] = true;
+				var pos = topLeft(o);
+				var cap = captionText(o.annotation);
+				var node = capNodes[id];
+				if (!node) {
+					node = document.createElement("div");
+					node.className = "anno-cap";
+					layer.appendChild(node);
+					capNodes[id] = node;
+				}
+				if (node.textContent !== cap.text) node.textContent = cap.text;
+				node.classList.toggle("is-null", cap.empty);
+				if (pos) {
+					node.style.left = Math.max(0, Math.round(pos.x) + 3) + "px";
+					node.style.top = Math.max(0, Math.round(pos.y) + 3) + "px";
+				}
+			});
+			for (var id in capNodes) {
+				if (!capNodes.hasOwnProperty(id) || seen[id]) continue;
+				if (capNodes[id].parentNode) capNodes[id].parentNode.removeChild(capNodes[id]);
+				delete capNodes[id];
+			}
+		}
+		capRaf = requestAnimationFrame(tickCaptions);
+	}
+
+	function setCaptions(on) {
+		captionsOn = !!on;
+		var btn = document.getElementById("btn_captions");
+		if (btn) btn.classList.toggle("on", captionsOn);
+		if (!captionsOn) {
+			if (capRaf) cancelAnimationFrame(capRaf);
+			capRaf = 0;
+			var layer = document.getElementById("annoCaptions");
+			if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
+			capNodes = {};
+			return;
+		}
+		if (!capRaf) capRaf = requestAnimationFrame(tickCaptions);
+	}
+
+	function toggleCaptions() {
+		setCaptions(!captionsOn);
+	}
+
+	function bind() {
+		$("#comboGlanceOpen, #btn_combos").on("click", function () {
+			togglePanel();
+			this.blur();
+		});
+		$("#comboPanelClose").on("click", function () {
+			setPanel(false);
+		});
+		$("#btn_captions").on("click", function () {
+			toggleCaptions();
+			this.blur();
+		});
+		$("#comboMetric").on("click", "button", function () {
+			setMetric(this.getAttribute("data-metric"));
+		});
+		$("#comboTargetBtn").on("click", function () {
+			var input = document.getElementById("comboTargetFile");
+			if (input) input.click();
+		});
+		$("#comboSortSize").on("click", function () {
+			sortBySize = !sortBySize;
+			this.classList.toggle("on", sortBySize);
+			try { localStorage.setItem(SORT_KEY, sortBySize ? "size" : ""); } catch (e) {}
+			refresh();
+		});
+		$("#comboTargetFile").on("change", function () {
+			var file = this.files && this.files[0];
+			this.value = "";
+			if (!file) return;
+			var reader = new FileReader();
+			reader.onload = function () {
+				var doc;
+				try { doc = JSON.parse(reader.result); }
+				catch (err) {
+					new Noty({ type: "error", theme: "mint", layout: "topRight", text: "το αρχείο δεν είναι json", timeout: 1600 }).show();
+					return;
+				}
+				if (!doc || !doc.files || !doc.summary) {
+					new Noty({ type: "error", theme: "mint", layout: "topRight", text: "αυτό το json δεν έχει στόχους", timeout: 1600 }).show();
+					return;
+				}
+				rememberExposure(doc);
+			};
+			reader.readAsText(file);
+		});
+		$("#comboSearch").on("input", function () {
+			query = this.value || "";
+			refresh();
+		});
+		$("#comboViewBtn").on("click", function (e) {
+			e.stopPropagation();
+			viewOpen = !viewOpen;
+			var menu = document.getElementById("comboViewMenu");
+			if (menu) menu.classList.toggle("open", viewOpen);
+			if (viewOpen) {
+				var input = document.getElementById("comboViewSearch");
+				if (input) window.setTimeout(function () { input.focus(); }, 0);
+			}
+		});
+		$("#comboViewSearch").on("input", function () {
+			viewQuery = this.value || "";
+			refresh();
+		});
+		$("#comboViewSearch").on("click", function (e) { e.stopPropagation(); });
+		$("#comboViewAll").on("click", function (e) {
+			e.stopPropagation();
+			setViews([]);
+			refresh();
+		});
+		$("#comboViewList").on("change", ".combo-view-pin", function (e) {
+			e.stopPropagation();
+			var row = $(this).closest(".combo-view-row")[0];
+			if (!row || !row._comboKey) return;
+			var list = viewsForProject();
+			var at = list.indexOf(row._comboKey);
+			if (this.checked && at < 0) list.push(row._comboKey);
+			if (!this.checked && at >= 0) list.splice(at, 1);
+			setViews(list);
+			refresh();
+			followView();
+		});
+		$(document).on("click", function (e) {
+			if (!$(e.target).closest("#comboView").length) {
+				viewOpen = false;
+				var menu = document.getElementById("comboViewMenu");
+				if (menu) menu.classList.remove("open");
+			}
+		});
+		$("#comboViewMenu").on("mousewheel DOMMouseScroll wheel", function (e) {
+			e.stopPropagation();
+		});
+		$("#comboList").on("click", ".combo-row", function (e) {
+			if ($(e.target).closest("input, label, button").length) return;
+			manualWatch = true;
+			watchedKey = this._comboKey || "";
+			refresh();
+		});
+		$("#comboList").on("change", ".combo-pin", function (e) {
+			e.stopPropagation();
+			var row = $(this).closest(".combo-row")[0];
+			if (!row || !row._comboKey) return;
+			var list = locksForProject();
+			var at = list.indexOf(row._comboKey);
+			if (this.checked && at < 0) list.push(row._comboKey);
+			if (!this.checked && at >= 0) list.splice(at, 1);
+			setLocks(list);
+			refresh();
+		});
+		$("#comboLockClear").on("click", function () {
+			setLocks([]);
+			refresh();
+			this.blur();
+		});
+		$("#comboList").on("change", ".combo-target", function () {
+			var key = $(this).closest(".combo-row")[0]._comboKey;
+			var raw = $.trim(this.value);
+			setTarget(key, raw === "" ? "" : (parseInt(raw, 10) || 0));
+			refresh();
+		});
+		$("#comboPanel").on("mousewheel DOMMouseScroll wheel", function (e) {
+			e.stopPropagation();
+		});
+		$("#comboPanelHead").on("mousedown", function (e) {
+			if ($(e.target).closest("button, input").length) return;
+			var panel = document.getElementById("comboPanel");
+			var rect = panel.getBoundingClientRect();
+			drag = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+			e.preventDefault();
+		});
+		$(document).on("mousemove", function (e) {
+			if (!drag) return;
+			var panel = document.getElementById("comboPanel");
+			var left = Math.max(8, e.clientX - drag.dx);
+			var top = Math.max(8, e.clientY - drag.dy);
+			panel.style.left = left + "px";
+			panel.style.top = top + "px";
+			panel.style.right = "auto";
+		});
+		$(document).on("mouseup", function () {
+			if (!drag) return;
+			drag = null;
+			var panel = document.getElementById("comboPanel");
+			var rect = panel.getBoundingClientRect();
+			try {
+				localStorage.setItem(POS_KEY, JSON.stringify({ left: rect.left, top: rect.top }));
+			} catch (e) {}
+		});
+		if (window.Mousetrap) {
+			Mousetrap.bind(";", function (e) {
+				if (e.preventDefault) e.preventDefault();
+				toggleCaptions();
+			});
+		}
+		if (typeof storeAnnotationImg === "function" && !storeAnnotationImg._liveWrapped) {
+			var orig = storeAnnotationImg;
+			window.storeAnnotationImg = function () {
+				var result = orig.apply(this, arguments);
+				refresh();
+				return result;
+			};
+			window.storeAnnotationImg._liveWrapped = true;
+		}
+	}
+
+	function init() {
+		var savedMetric = "";
+		try { savedMetric = localStorage.getItem(METRIC_KEY) || ""; } catch (e) {}
+		metric = savedMetric === "hits" ? "hits" : "boxes";
+		try { sortBySize = localStorage.getItem(SORT_KEY) === "size"; } catch (e) {}
+		var sortBtn = document.getElementById("comboSortSize");
+		if (sortBtn) sortBtn.classList.toggle("on", sortBySize);
+		var buttons = document.querySelectorAll("#comboMetric button");
+		for (var i = 0; i < buttons.length; i++) {
+			buttons[i].classList.toggle("on", buttons[i].getAttribute("data-metric") === metric);
+		}
+		bind();
+		try {
+			if (localStorage.getItem(EXPOSURE_BOUND_KEY)) pendingExposureClear = "1";
+			localStorage.removeItem(EXPOSURE_KEY);
+			localStorage.removeItem(EXPOSURE_BOUND_KEY);
+		} catch (e3) {}
+		var open = false;
+		try {
+			var flag = localStorage.getItem(OPEN_KEY);
+			if (flag === "1") open = true;
+			else if (flag === "0") open = false;
+			else open = window.innerWidth >= 1600;
+		} catch (e2) {
+			open = window.innerWidth >= 1600;
+		}
+		setPanel(open);
+		refresh();
+		setInterval(refresh, 400);
+		if (!hitsRaf) hitsRaf = requestAnimationFrame(tickHits);
+	}
+
+	window.AnnoLive = {
+		refresh: refresh,
+		clearExposurePlan: clearExposurePlan,
+		openPanel: function () { setPanel(true); },
+		setCaptions: setCaptions,
+		toggleCaptions: toggleCaptions,
+		navCombo: function () { return null; },
+		navCombos: function () {
+			var list = viewCombos();
+			return list.length ? list : null;
+		}
+	};
+
+	if (document.getElementById("comboPanel")) init();
+	else $(init);
+})();

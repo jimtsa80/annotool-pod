@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<title>annotool · admin</title>
+<link rel="stylesheet" href="css/admin.css?v=1">
+</head>
+<body>
+<header>
+	<h1>annotool · admin</h1>
+	<span id="who"></span>
+	<span id="srv"></span>
+</header>
+<section id="loginBox" hidden>
+	<h2>Login (admin)</h2>
+	<form id="loginForm">
+		<input id="url" placeholder="server URL" size="32">
+		<input id="user" placeholder="username" autocomplete="username">
+		<input id="pass" type="password" placeholder="password" autocomplete="current-password">
+		<button type="submit">Login</button>
+	</form>
+	<p class="hint">Χρησιμοποιεί την ίδια σύνδεση με το tool (Server λειτουργία). Μόνο για admin.</p>
+</section>
+<main id="app" hidden>
+	<nav>
+		<button data-tab="users" class="on">Χρήστες</button>
+		<button data-tab="families">Families</button>
+		<button data-tab="activity">Δραστηριότητα</button>
+		<button data-tab="jobs">Jobs / Status</button>
+	</nav>
+	<section data-pane="users">
+		<h2>Χρήστες</h2>
+		<form id="newUser" class="inline">
+			<input name="username" placeholder="username" required>
+			<input name="password" type="password" placeholder="password (≥6)" required minlength="6">
+			<select name="role"><option value="user">user</option><option value="admin">admin</option></select>
+			<button type="submit">Νέος χρήστης</button>
+		</form>
+		<table id="usersTbl"></table>
+	</section>
+	<section data-pane="families" hidden>
+		<h2>Families</h2>
+		<table id="famTbl"></table>
+		<div id="famDetail"></div>
+	</section>
+	<section data-pane="activity" hidden>
+		<h2>Δραστηριότητα</h2>
+		<label>Ημέρες <input id="actDays" type="number" value="7" min="1" max="365" style="width:60px"></label>
+		<button id="actReload">Ανανέωση</button>
+		<h3>Ανά χρήστη / ημέρα</h3>
+		<table id="actTbl"></table>
+		<h3>Τελευταία γεγονότα</h3>
+		<table id="evTbl"></table>
+	</section>
+	<section data-pane="jobs" hidden>
+		<h2>Jobs / Status</h2>
+		<div id="jobs"></div>
+	</section>
+</main>
+<script src="js/admin.js?v=2"></script>
+</body>
+</html>

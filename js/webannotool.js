@@ -1,0 +1,2527 @@
+
+// ALL Variables		
+var 
+im, 
+imWidth, 
+imHeight, 
+imName, 
+imIndex, 
+prev_imName, 
+prev_imIndex, 
+next_imName, 
+next_imIndex, 
+brd, 
+imList = [],
+imAll = {},
+imIndices = [],
+pendingFolderName = "",
+clusterGroups = null,
+clusterOrder = [],
+clustersOpened = {},
+clusterCursor = {},
+activeCluster = "",
+imLength,
+highlighted = [],
+prefs = {
+	projectName: "",
+	AnnotatorName: "",
+	prefsFilename: "",
+	imgFoldername: "",
+	userAdds: {},
+	groups: [],
+	brands: [],
+	tpoints: [],
+	conns: {},
+	seelater: []
+},
+presets = {
+	'f1':[], 'f2':[], 'f3': [], 'f4': [], 'f5':[], 'f6':[], 'f7':[], 'f8':[], 'f9':[], 'f10':[], 'f11':[], 'f12':[],
+	'alt+f1':[], 'alt+f2':[], 'alt+f3': [], 'alt+f4': [], 'alt+f5':[], 'alt+f6':[], 'alt+f7':[], 'alt+f8':[], 'alt+f9':[], 'alt+f10':[], 'alt+f11':[], 'alt+f12':[],
+	'1':[], '2':[], '3': [], '4': [], '5':[], '6':[], '7':[], '8':[], '9':[], '0':[],
+	'alt+1':[], 'alt+2':[], 'alt+3': [], 'alt+4': [], 'alt+5':[], 'alt+6':[], 'alt+7':[], 'alt+8':[], 'alt+9':[], 'alt+0':[],
+	'q':[], 'w':[], 'e':[], 'r':[], 't':[], 'y':[], 'u':[], 'i':[], 'o':[], 'p':[],	
+	'alt+q':[], 'alt+w':[], 'alt+e':[], 'alt+r':[], 'alt+t':[], 'alt+y':[], 'alt+u':[], 'alt+i':[], 'alt+o':[], 'alt+p':[],	
+	'g':[], 'h':[], 'j':[], 'k':[], 'l':[], 'b':[],	'n':[], 'm':[],	
+	'alt+g':[], 'alt+h':[], 'alt+j':[], 'alt+k':[], 'alt+l':[], 'alt+b':[],	'alt+n':[], 'alt+m':[],	
+	"end":[]
+},
+allAnnotations = {
+	project: "",
+	imageNum: "",
+	prefs: {},
+	images: {},
+	currentImage: "",
+	presets: presets
+},
+ctrlPressed = !1,
+autosaveTimer, autosaveInterval = 60000,
+imReadFlag = !1,
+nullAnnoFlag = 0,
+hasNull = 0,
+lockedpreset = "",
+presetGrab = null,
+presetPointer = null,
+prevopen = false,
+fileInput = document.getElementById("projectFolder"),
+newProjButton = document.getElementById("newProjButton"),
+workspaceInput = document.getElementById("workspace"),
+prefsRefresh = document.getElementById("prefsRefresh"),
+prefsInput = document.getElementById("projectPrefs"),
+loadAnn = document.getElementById("loadAnn"),
+loadPresets = document.getElementById("loadPresets"),
+// loadOpts = document.getElementById("loadOpts"),
+imgNameInput = document.getElementById("imageName"),
+colsFolded = false,
+imNaturalW = 0,
+imNaturalH = 0,
+boxborder = "#4fe2ff",
+boxborderwidth = 2,
+highlightstrokecolor = "orange",
+highlightstrokecolorwidth = 2,
+mouseoverfillcolor = "white",
+dotstrokecolor = "yellow";
+
+window.onload = function() {
+	Mousetrap.pause();
+    checkLoadLocalStorage();
+    for (var a = document.querySelectorAll('input[type="checkbox"].ios-switch'), b = 0, c; c = a[b++];) {
+        var d = document.createElement("div");
+        d.className = "switch";
+        c.parentNode.insertBefore(d, c.nextSibling)
+    }
+};
+
+window.onbeforeunload = function () {
+    return "Have you downloaded the JSON file containing all the annotations?"
+}
+
+function showSpinner() {
+    document.getElementById('myModal').style.display = "block";
+}
+
+function hideSpinner() {
+    document.getElementById('myModal').style.display = "none";
+}
+
+//////// Event Listeners
+if (workspaceInput) workspaceInput.addEventListener("change", function(a) {
+    a = workspaceInput.options[workspaceInput.selectedIndex].text.toLowerCase();
+    var b = "";
+    "video" == a ? b = "css/video.css" : b = "css/photo.css" ;
+    document.getElementById("workspace-css").setAttribute("href", b)
+});
+$( "#hits" ).change(function(a) {
+    a = highlighted;
+    var b = resolveBrandConn(),   c = resolveTpoint(),   d = $("#hits").val();
+    if ("" == d) return alert("Please select again the hits number."), document.getElementById("hits").selectedIndex = -1, !1;
+    if ( b !== "" && c !== "" ) {
+		if( a.length==0 ){
+			new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'δεν έχεις επιλέξει τετράγωνο',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+		}	
+		if(a.length>1){
+			new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'έχεις επιλέξει περισσότερα από ένα τετράγωνα',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+		}
+        for (var e = 0, g = a.length; e < g; e++){ 
+		var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
+		a[e].annotation.group = b.split("__")[0];
+		a[e].annotation.brand = b.split("__")[1];
+		a[e].annotation.tpoint = c;
+		a[e].annotation.hits = parseInt(d, 10);
+		if (wasEmpty) nullAnnoFlag--;
+        dehighlightAllObj()
+		}
+    }else{
+		new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: soleBrandConn() ? 'δεν βρέθηκε location για αυτό το brand' : 'δεν έχεις επιλέξει touchpoint',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+	}
+    resetAfterHitsApplied();
+});
+	
+document.addEventListener("dragstart", function(a) {
+    a.preventDefault();
+    return !1
+});
+
+loadAnn.addEventListener("change", function(a) {
+    loadAnnotations();
+    loadAnn.blur()
+});
+loadPresets.addEventListener("change", function(a) {
+    loadPresetsFromJson();
+    loadPresets.blur()
+});	
+
+imgNameInput.addEventListener("change", function(a) {
+    if (imgNameInput.value == imName) return a.preventDefault(), !1;
+    if ("" != document.getElementById("projectFolder").value) {
+        var b = imIndices.indexOf(imgNameInput.value);
+        if (-1 == b || imReadFlag) return a.preventDefault(), !1;
+        imReadFlag = !0;
+        loadImg(b)
+    }
+    imgNameInput.blur()
+});
+//////// END Event Listeners
+
+function timestamp() {
+	var d = new Date();
+	var month = d.getUTCMonth();	//get the month
+	var day = d.getDate();		//get the day
+	var year = d.getFullYear();		//get the year
+	var hours = d.getHours();		//get hours
+	var minutes = d.getMinutes();		//get minutes
+	var seconds = d.getSeconds();		//get seconds
+	year = year.toString().substr(2,2);		//pull the last two digits of the year
+	month = month + 1;		//increment month by 1 since it is 0 indexed
+	month = month + "";		//converts month to a string
+	if (month.length == 1)	{	month = "0" + month;	}		//if month is 1-9 pad right with a 0 for two digits
+	day = day + "";		//convert day to string	
+	if (day.length == 1)	{	day = "0" + day;	}		//if day is between 1-9 pad right with a 0 for two digits
+	hours = hours + "";	//convert hours to string
+	if (hours.length == 1)	{	hours = "0" + hours;	}		//if hours is 1-9 pad right with a 0 for two digits
+	minutes = minutes + "";	//convert minutes to string
+	if (minutes.length == 1)	{	minutes = "0" + minutes;	}		//if minutes is 1-9 pad right with a 0 for two digits
+	seconds = seconds + "";	//convert seconds to string
+	if (seconds.length == 1)	{	seconds = "0" + seconds;	}		//if seconds is 1-9 pad right with a 0 for two digits
+	var mydate = year + month + day;		//return the string "MMddyy"
+	//var mytime = hours + minutes + seconds;
+	var mytime = hours + minutes;
+	
+	return mydate + "-" + mytime;
+}
+
+function bareImageName(key) {
+	key = String(key || "");
+	var cut = key.lastIndexOf("/");
+	return cut < 0 ? key : key.slice(cut + 1);
+}
+
+function countGrouped(grouped) {
+	var n = 0, name;
+	for (name in grouped) if (grouped.hasOwnProperty(name)) n += grouped[name].keys.length;
+	return n;
+}
+
+function resetClusters() {
+	clusterGroups = null;
+	clusterOrder = [];
+	clustersOpened = {};
+	clusterCursor = {};
+	activeCluster = "";
+}
+
+function hideClusterBar() {
+	resetClusters();
+	var sel = document.getElementById("clusterPick");
+	if (!sel) return;
+	sel.className = "";
+	sel.innerHTML = "";
+}
+
+function clusterHasWork(name) {
+	var prefix = name + "/", images = (allAnnotations && allAnnotations.images) || {}, key;
+	for (key in images) {
+		if (!images.hasOwnProperty(key) || key.indexOf(prefix) !== 0) continue;
+		if (images[key] && images[key].annotations && images[key].annotations.length) return true;
+	}
+	return false;
+}
+
+function paintClusterBar() {
+	var sel = document.getElementById("clusterPick");
+	if (!sel) return;
+	sel.innerHTML = "";
+	if (!clusterOrder || clusterOrder.length < 2) {
+		sel.className = "";
+		return;
+	}
+	sel.className = "on";
+	var i, name, opt, n;
+	for (i = 0; i < clusterOrder.length; i++) {
+		name = clusterOrder[i];
+		n = clusterGroups[name] ? clusterGroups[name].keys.length : 0;
+		opt = document.createElement("option");
+		opt.value = name;
+		opt.textContent = (clusterHasWork(name) ? "✓ " : "") + name + "  (" + n + ")";
+		sel.appendChild(opt);
+	}
+	sel.value = activeCluster;
+}
+
+function activateCluster(name) {
+	if (!clusterGroups || !clusterGroups[name] || name === activeCluster || imReadFlag) return false;
+	if (0 < nullAnnoFlag) {
+		if (typeof highlightNull === "function") highlightNull();
+		new Noty({ type: "error", theme: "mint", layout: "top", text: "NULL : κάποιο τετράγωνο δεν έχει πληροφορία", timeout: 1000, closeWith: ["click", "button"] }).show();
+		return false;
+	}
+	if (activeCluster) clusterCursor[activeCluster] = imIndex;
+	storeAnnotationImg();
+	if (typeof endPresetGrab === "function") endPresetGrab();
+	if (window.AnnoSuggest && AnnoSuggest.clear) AnnoSuggest.clear();
+	activeCluster = name;
+	clustersOpened[name] = true;
+	applyClusterFileName(name);
+	resetImageObjectUrls();
+	imAll = clusterGroups[name].files;
+	imIndices = clusterGroups[name].keys.slice();
+	var idx = clusterCursor[name];
+	if (!(idx >= 0) || idx >= imIndices.length) idx = 0;
+	allAnnotations.imageNum = countGrouped(clusterFileTotals());
+	paintClusterBar();
+	imIndex = idx > 0 ? idx - 1 : -1;
+	imReadFlag = true;
+	loadImg(idx);
+	return true;
+}
+
+function clusterFileTotals() {
+	var grouped = {}, i, name;
+	if (!clusterGroups) return grouped;
+	for (i = 0; i < clusterOrder.length; i++) {
+		name = clusterOrder[i];
+		grouped[name] = { keys: clusterGroups[name].keys };
+	}
+	return grouped;
+}
+
+function applyClusterFileName(name) {
+	if (!name) return;
+	if (prefs && prefs.projectRoot === undefined) prefs.projectRoot = prefs.projectName || "";
+	prefs.projectName = name;
+	allAnnotations.project = name;
+	if (window.AnnoSync && AnnoSync.noteProject) AnnoSync.noteProject(name);
+	var el = document.getElementById("projectName");
+	if (!el) return;
+	if (el.tagName === "INPUT") el.value = name;
+	else el.textContent = name;
+}
+
+function folderSelectionLabel(path) {
+	var n = 0, i;
+	if (clusterGroups && clusterOrder.length > 1) {
+		for (i = 0; i < clusterOrder.length; i++) n += clusterGroups[clusterOrder[i]].keys.length;
+	} else n = allAnnotations.imageNum || 0;
+	var extra = clusterOrder && clusterOrder.length > 1 ? " · " + clusterOrder.length + " clusters" : "";
+	return n ? "[" + n + " files" + extra + "]  " + path : path;
+}
+
+document.addEventListener("change", function (e) {
+	if (!e.target || e.target.id !== "clusterPick") return;
+	if (!activateCluster(e.target.value)) e.target.value = activeCluster;
+});
+
+function checkLoadLocalStorage() {
+    "undefined" === typeof localStorage && alert("CAUTION: Local storage is not supported by your browser. For this reason autosave will not work. You have to manually save your annotations.");
+    try {
+        if ("undefined" !== typeof localStorage.allAnnotations && "" !== localStorage.allAnnotations) {
+            allAnnotations = JSON.parse(localStorage.allAnnotations);
+            prefs = allAnnotations.prefs;
+            presets = allAnnotations.presets;
+            if (prefs && prefs.projectName) document.getElementById("projectName").innerHTML = prefs.projectName;
+            if (prefs && prefs.AnnotatorName) document.getElementById("AnnotatorName").innerHTML = prefs.AnnotatorName;
+            if (typeof paintSavedBrands === "function") paintSavedBrands();
+            resetGUIAnnoInfo();
+        }
+    } catch (e) {}
+    if (window.AnnoSync && AnnoSync.noteHydrated) AnnoSync.noteHydrated();
+}
+
+function uniqueArr(list) {
+    var result = [];
+    $.each(list, function(i, e) {
+        if ($.inArray(e, result) == -1) result.push(e);
+    });
+    return result;
+}
+
+function checkConnsChanges(){	//NOT USED
+	if ( Object.keys(allAnnotations.images).length>0 ){	//AN YPARXOUN ANNO STI MNHMH
+		for ( x in allAnnotations.images ){	// ΓΙΑ ΚΑΘΕ ΕΙΚΟΝΑ ΜΕ ΑΝΝΟ
+			var thisannos = allAnnotations.images[x].annotations;
+			for ( y in thisannos ) {	// ΓΙΑ ΚΑΘΕ ΑΝΝΟ ΤΗΣ ΕΙΚΟΝΑΣ
+				if ( jQuery.inArray( thisannos[y].group, prefs.groups )<0 ){	// ΑΝ ΔΕΝ ΥΠΑΡΧΕΙ ΤΟ ΓΚΡΟΥΠ ΤΟΥ ΑΝΝΟ ΣΤΑ PREFS
+					for ( conn in prefs.conns ) {
+						if ( prefs.conns[conn].brand == thisannos[y].brand ){ 
+							thisannos[y].group = prefs.conns[conn].group ;
+						}
+					}
+				}
+				if ( jQuery.inArray( thisannos[y].brand, prefs.brand )<0 ){	// ΑΝ ΔΕΝ ΥΠΑΡΧΕΙ ΤΟ ΓΚΡΟΥΠ ΤΟΥ ΑΝΝΟ ΣΤΑ PREFS
+					for ( conn in prefs.conns ) {
+						if ( prefs.conns[conn].brand == thisannos[y].brand ){ 
+							thisannos[y].group = prefs.conns[conn].group ;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+function clearProjectPrefsSelection() {
+    document.getElementById("projectName").innerHTML = "Load Project";
+	document.getElementById("AnnotatorName").innerHTML = "Empty";
+    document.getElementById("projectPrefs").value = "";
+    document.getElementById("projectPrefsBox").value = "";
+	$("#projectPrefsBox").attr('title', "");
+    prefs = {
+        projectName: "",
+		AnnotatorName: "",
+        groups: [],
+		brands: [],
+		tpoints: [],
+        prefsFilename: "",
+        imgFoldername: "",
+		userAdds: {},
+		conns: {},
+		seelater: []
+    };
+    resetGUIAnnoInfo();
+    $("#brands").html("")
+}
+
+function clearProjectFolderSelection() {
+    document.getElementById("projectFolder").value = "";
+    document.getElementById("projectFolderBox").value = "";
+    $("#projectFolderBox").attr( 'title', "");
+    if (brd && brd.renderer) try {
+        JXG.JSXGraph.freeBoard(brd), document.getElementById("box").setAttribute("style", "width:900px;height:520px;"), resetImageObjectUrls(), imIndices = [], imAll = {}, im = void 0
+    } catch (a) {
+        console.log("Problem while initializing JSX board. Error: " + a.message)
+    }
+    $("#imageName").val("");
+    hideClusterBar();
+}
+
+function disableGroups(){
+	b = document.getElementById("brands");
+	for(i=0;i<b.length;i++){	//disable brand groups selection
+		if (b[i].className == "group" )  {
+			b[i].disabled=true;
+			$(b[i]).addClass("disabled")
+		}
+	}	
+}
+
+function brandsInit() {
+	$("#brands ul li ul li").addClass("brand");
+	$('#brands ul').sortable({disabled: true});	// MANDATORY FOR SORTABLE TO WORK : adds class "ui-sortable-handle"
+	if (typeof applyBrandOrder === "function") applyBrandOrder();
+	$("#brands ul li ul li").on("click", function(){
+			if ( !$(this).hasClass('selected') ){
+				$("#brands li").removeClass('selected');
+				$(this).addClass('selected');
+				
+				fillTouchpoints( $("#brands li.brand.selected").attr('id') );
+				if (typeof applyTpointOrder === "function") applyTpointOrder();
+				tpointsInit();
+				$("#hits option:selected").prop("selected", false);
+			}
+	})
+	syncSoleBrand();
+}
+
+function tpointText(node) {
+    var name = "";
+    if (typeof node === "string") name = node;
+    else if (node && node.jquery) name = node.first().text();
+    else name = $("#tpoints ul li.selected").first().text();
+    name = $.trim(name || "");
+    var half = name.length / 2;
+    if (half && half === Math.floor(half) && name.slice(0, half) === name.slice(half)) {
+        var single = name.slice(0, half);
+        if (prefs && prefs.tpoints && prefs.tpoints.indexOf(single) !== -1) return single;
+    }
+    return name;
+}
+
+function soleBrandConn() {
+    var items = $("#brands ul li ul li.brand");
+    if (items.length !== 1) return "";
+    return items.first().attr("id") || "";
+}
+
+function soleLocationName(conn) {
+    if (!conn || !prefs || !prefs.conns || !prefs.conns[conn]) return "";
+    var tps = prefs.conns[conn].tpoints;
+    if (!tps || tps.length !== 1) return "";
+    return $.trim(tps[0] || "");
+}
+
+function resolveBrandConn() {
+    var b = $("#brands ul li.brand.selected").attr("id");
+    if (b) return b;
+    return soleBrandConn();
+}
+
+function resolveTpoint() {
+    var sel = tpointText();
+    if (sel) return sel;
+    var conn = resolveBrandConn();
+    if (!conn) return "";
+    var sole = soleLocationName(conn);
+    if (sole) return sole;
+    if (soleBrandConn()) {
+        var picked = $("#tpoints ul li.selected").first();
+        if (picked.length) return $.trim(picked.text() || "");
+        var first = $("#tpoints ul li").first();
+        if (first.length) return $.trim(first.text() || "");
+    }
+    return "";
+}
+
+function syncSoleBrand() {
+    var id = soleBrandConn();
+    if (!id) return;
+    var el = $("#brands ul li ul li.brand").first();
+    if (!$("#brands ul li.brand.selected").length) {
+        $("#brands li").removeClass("selected");
+        el.addClass("selected");
+        fillTouchpoints(id);
+        if (typeof applyTpointOrder === "function") applyTpointOrder();
+        tpointsInit();
+    }
+}
+
+function resetAfterHitsApplied() {
+    $("#hits").blur();
+    $("#brands ul li").removeClass("selected");
+    document.getElementById("hits").selectedIndex = -1;
+    var sole = soleBrandConn();
+    if (sole) {
+        $("#brands ul li ul li.brand").first().addClass("selected");
+        fillTouchpoints(sole);
+        if (typeof applyTpointOrder === "function") applyTpointOrder();
+        tpointsInit();
+    } else {
+        $("#tpoints ul").remove();
+    }
+}
+
+function tpointsInit() {
+	$('#tpoints ul').sortable({disabled: true});	// MANDATORY FOR SORTABLE TO WORK : adds class "ui-sortable-handle"
+	if ( $("#tpoints ul li").length>0 && $("#tpoints ul li.selected").length==0 ) $("#tpoints ul li:first").addClass('selected')
+	$("#tpoints ul li").on("click", function(){
+		if ( !$(this).hasClass('selected') ){
+			$("#tpoints li").removeClass('selected')
+			$(this).addClass('selected')
+		}
+		if (typeof paintStickyMarks === "function") paintStickyMarks();
+	});
+	if (typeof paintStickyMarks === "function") paintStickyMarks();
+}
+
+function normLocName(name) {
+	return $.trim(name || "").toLowerCase().replace(/\s+/g, " ");
+}
+
+function stickyStoreKey() {
+	var root = "default";
+	if (typeof prefs !== "undefined" && prefs) root = prefs.projectRoot || prefs.projectName || "default";
+	return "annotool.carry." + root;
+}
+
+function stickyOverrides() {
+	try {
+		var raw = JSON.parse(localStorage.getItem(stickyStoreKey()) || "{}");
+		return raw && typeof raw === "object" ? raw : {};
+	} catch (e) {
+		return {};
+	}
+}
+
+function stickyDefault(name) {
+	var n = normLocName(name), i;
+	var keys = ["grass sign", "pitch painting", "perimeter board", "sightscreen", "boundary rope"];
+	if (!n) return false;
+	for (i = 0; i < keys.length; i++) if (n.indexOf(keys[i]) !== -1) return true;
+	return false;
+}
+
+function isStickyLocation(name) {
+	var n = normLocName(name);
+	var over;
+	if (!n) return true;
+	over = stickyOverrides();
+	if (Object.prototype.hasOwnProperty.call(over, n)) return !!over[n];
+	return true;
+}
+
+function toggleStickyLocation(name) {
+	var n = normLocName(name);
+	var over, on;
+	if (!n) return false;
+	over = stickyOverrides();
+	on = !isStickyLocation(name);
+	over[n] = on;
+	try { localStorage.setItem(stickyStoreKey(), JSON.stringify(over)); } catch (e) {}
+	return on;
+}
+
+function renameStickyLocation(from, to) {
+	var a = normLocName(from), b = normLocName(to), over;
+	if (!a || !b || a === b) return;
+	over = stickyOverrides();
+	if (!Object.prototype.hasOwnProperty.call(over, a)) return;
+	over[b] = over[a];
+	delete over[a];
+	try { localStorage.setItem(stickyStoreKey(), JSON.stringify(over)); } catch (e) {}
+}
+
+function paintStickyMarks() {
+	var btn = document.getElementById("locSticky");
+	var selected = $("#tpoints ul li.selected").first().text();
+	$("#tpoints li").each(function () {
+		$(this).toggleClass("loc-sticky", isStickyLocation($(this).text()));
+	});
+	if (btn) btn.classList.toggle("on", !!(selected && isStickyLocation(selected)));
+}
+
+function imageHasBoxes() {
+	var i, poly;
+	if (!brd || !brd.objectsList) return false;
+	for (i = 0; i < brd.objectsList.length; i++) {
+		poly = brd.objectsList[i];
+		if (!poly || !poly.getType || poly.getType() !== "polygon" || poly._liveSuggest) continue;
+		if (poly.getAttribute && poly.getAttribute("visible") === false) continue;
+		return true;
+	}
+	return false;
+}
+
+function carryStickyBoxes(fromName) {
+	var src, sx, sy, i, ann, x1, y1, x2, y2, poly, n, now;
+	if (!fromName || fromName === imName || imageHasBoxes()) return;
+	src = allAnnotations.images && allAnnotations.images[fromName];
+	if (!src || !src.annotations || !src.annotations.length) return;
+	sx = 1;
+	sy = 1;
+	if (src.width > 0 && src.height > 0 && imWidth > 0 && imHeight > 0) {
+		sx = imWidth / src.width;
+		sy = imHeight / src.height;
+	}
+	n = 0;
+	now = new Date().toISOString();
+	var made = [];
+	brd.suspendUpdate();
+	for (i = 0; i < src.annotations.length; i++) {
+		ann = src.annotations[i];
+		if (!ann || !ann.startPoint || !ann.diagPoint || !isStickyLocation(ann.tpoint)) continue;
+		x1 = ann.startPoint[0] * sx;
+		y1 = ann.startPoint[1] * sy;
+		x2 = ann.diagPoint[0] * sx;
+		y2 = ann.diagPoint[1] * sy;
+		if (Math.max(x1, x2) < 1 || Math.max(y1, y2) < 1 || Math.min(x1, x2) > imWidth || Math.min(y1, y2) > imHeight) continue;
+		poly = createPolygon([x1, y1], [x2, y2]);
+		poly.annotation = {
+			group: ann.group || "",
+			brand: ann.brand || "",
+			tpoint: tpointText(ann.tpoint),
+			hits: ann.hits,
+			timestamp: now
+		};
+		made.push(poly);
+		n++;
+	}
+	brd.unsuspendUpdate();
+	if (!n) return;
+	beginPresetGrab(made, true);
+	if (window.AnnoLive && AnnoLive.refresh) AnnoLive.refresh();
+}
+
+function fillTouchpoints(conn) {
+    var b = $('#tpoints');
+    if ( "" !== conn ) {
+        $('#tpoints').html("");
+		tpoints = prefs.conns[conn].tpoints;
+        if (void 0 === tpoints) return console.log("Could not find brand name of annotation, possibly due to altered prefs file."), !1;
+        i = 0;
+		$('#tpoints').append('<ul></ul>')
+        var seenTp = {};
+        for (var c = tpoints.length; i < c; i++) {
+            var d = tpoints[i];
+            if (!d || seenTp[d]) continue;
+            seenTp[d] = true;
+			$('#tpoints ul').append(
+				$("<li></li>")
+				.attr("id",d)
+				// .attr("value",a)
+				.text(d)
+			); 
+        }
+        1 == $('#tpoints ul li').length && $('#tpoints ul li:first').addClass('selected');
+    } else {
+		$('#tpoints li').length = 0
+	}
+	$("#tpoints li").on("click", function(){
+		document.getElementById("hits").selectedIndex = -1;
+		if (typeof paintStickyMarks === "function") paintStickyMarks();
+	})
+	if (typeof applyTpointOrder === "function") applyTpointOrder();
+	if (typeof paintLocSwapMarks === "function") paintLocSwapMarks();
+	if (typeof paintStickyMarks === "function") paintStickyMarks();
+}
+
+
+
+function initJSXBoard() {
+    resetClusters();
+    if ( 0 === $("#brands ul li").length || "" === prefs.prefsFilename){
+		pendingFolderName = "";
+		return prefs = {
+			projectName: "",
+			brands: [],
+			seelater: [],
+			prefsFilename: "",
+			imgFoldername: ""
+		};
+		alert("You must first load a valid preferences file.");
+		clearProjectFolderSelection(), !1;
+	}
+    if ("" !== document.getElementById("projectFolder").value) {
+        if (brd && brd.renderer) try {
+            JXG.JSXGraph.freeBoard(brd), 
+			document.getElementById("box").setAttribute("style", "width:900px;height:520px;"), 
+resetImageObjectUrls(),
+imIndices = [],
+imAll = {},
+clusterGroups = null,
+clusterOrder = [],
+clustersOpened = {},
+clusterCursor = {},
+activeCluster = "",
+			im = void 0
+        } catch (a) {
+            console.log("Problem while initializing JSX board. Error: " + a.message)
+        }
+        imList = document.getElementById("projectFolder").files;
+        imAll = {};
+        imIndices = [];
+        resetClusters();
+        var grouped = {}, groupNames = [], file, rel, parts, clusterName, baseName, gi, ki;
+        for (var b = 0, c = imList.length; b < c; b++) {
+            file = imList[b];
+            if (!file.type || !file.type.match("image.*")) continue;
+            rel = (file.webkitRelativePath || file.name).replace(/\\/g, "/");
+            parts = rel.split("/");
+            clusterName = parts.length > 2 ? parts.slice(1, -1).join("/") : "";
+            baseName = file.name.split(".")[0];
+            if (!grouped[clusterName]) {
+                grouped[clusterName] = { files: {}, keys: [] };
+                groupNames.push(clusterName);
+            }
+            if (!grouped[clusterName].files[baseName]) grouped[clusterName].keys.push(baseName);
+            grouped[clusterName].files[baseName] = file;
+        }
+        groupNames.sort(alphanumCase);
+        if (groupNames.length > 1) {
+            clusterGroups = {};
+            clusterOrder = [];
+            for (gi = 0; gi < groupNames.length; gi++) {
+                var label = groupNames[gi] || "ρίζα";
+                var src = grouped[groupNames[gi]];
+                var entry = { files: {}, keys: [] };
+                src.keys.sort(alphanumCase);
+                for (ki = 0; ki < src.keys.length; ki++) {
+                    var fullKey = label + "/" + src.keys[ki];
+                    entry.files[fullKey] = src.files[src.keys[ki]];
+                    entry.keys.push(fullKey);
+                }
+                clusterGroups[label] = entry;
+                clusterOrder.push(label);
+            }
+            clusterOrder.sort(alphanumCase);
+            activeCluster = clusterOrder[0];
+            clustersOpened[activeCluster] = true;
+            imAll = clusterGroups[activeCluster].files;
+            imIndices = clusterGroups[activeCluster].keys.slice();
+            paintClusterBar();
+        } else if (groupNames.length === 1) {
+            var only = grouped[groupNames[0]];
+            for (baseName in only.files) {
+                if (!only.files.hasOwnProperty(baseName)) continue;
+                imAll[baseName] = only.files[baseName];
+                imIndices.push(baseName);
+            }
+            hideClusterBar();
+        }
+        allAnnotations.imageNum = imList.length ? countGrouped(grouped) : imIndices.length;
+        imIndices.sort(alphanumCase);
+        var nextProject = (clusterGroups && activeCluster) ? activeCluster : pendingFolderName;
+        pendingFolderName = "";
+        if (nextProject && window.AnnoSync && AnnoSync.noteProject) AnnoSync.noteProject(nextProject);
+        imName = imIndices[0];
+        prev_imName = imIndices[0];
+        prev_imIndex = imIndex = 0;
+        "" !== allAnnotations.currentImage && 
+		(
+		b = imIndices.indexOf(allAnnotations.currentImage), 
+		-1 != b && (
+			imName = allAnnotations.currentImage, 
+			imIndex = b, 
+			prev_imName = allAnnotations.currentImage, 
+			prev_imIndex = b
+			)
+		)
+    }
+    brd = JXG.JSXGraph.initBoard("box", {
+        boundingbox: [0, 0, 99, 99],
+        keepaspectratio: !0,
+        showCopyright: !1,
+        showNavigation: !1,
+        zoom: !0,
+        pan: !0,
+        registerEvents: !0
+    });
+    brd.highlightInfobox = function(a, b, d) {
+        if ("point" == d.getType()){
+            for (var c in d.childElements) "polygon" == brd.objects[c].getType() && (d = brd.objects[c], group = d.annotation.group, a = d.annotation.brand, b = d.annotation.tpoint, d = d.annotation.hits, "" == a && "" == b ? (a = "NULL", this.infobox.setText('<span style="color:white;font-weight:bold">' + a + "</span>"), 
+				this.infobox.rendNode.style.backgroundColor = "red", 
+				this.infobox.rendNode.style.padding = "2px") : 
+				(
+					a = a + " :: " + b + " :: " + d, 
+					// a = group + " :: " + a + " :: " + b + " :: " + d, 
+					this.infobox.setText('<span style="color:black;font-size:14px;">' + a + "</span>"), 
+					this.infobox.rendNode.style.backgroundColor = "#eee", 
+					this.infobox.rendNode.style.padding = "2px"
+				), 
+					this.infobox.rendNode.style.border = "solid white 1px", 
+					this.infobox.rendNode.style.borderRadius = "2px"
+				)
+		}
+    };
+    if (imReadFlag) return !1;
+    imReadFlag = !0;
+    loadImg(imIndex);
+    brd.on("down", function(a) {
+        brd.removeObject(brd.infobox);
+        brd.off("up");
+        brd.off("move");
+        brd.off("over");
+        brd.off("update");
+        var b = brd.getUsrCoordsOfMouse(a);
+        a = brd.getAllUnderMouse(a);
+        var d = a[1].elType,
+            c, e = brd.create("group", []);
+        if ("segment" == d) {
+            var v = brd.create("point", b, {
+                visible: !1,
+                size: 1,
+                strokeColor: "#009900",
+                fillColor: "#CC0000",
+                showinfobox: !1,
+                name: "",
+                withLabel: !1
+            });
+            c = a[1].parentPolygon;
+            var z = !1,
+                p = [];
+            if (-1 != highlighted.indexOf(c))
+                for (var n = 0, r = highlighted.length; n < r; n++) {
+                    var q = highlighted[n],
+                        l;
+                    if (boxIsLocked(q)) continue;
+                    for (l in q.ancestors) q.ancestors.hasOwnProperty(l) && p.push(q.ancestors[l])
+                } else
+                    for (l in c.ancestors) c.ancestors.hasOwnProperty(l) &&
+                        p.push(c.ancestors[l]);
+            brd.renderer.highlight(c);
+            n = c.ancestors[c.getParents()[0]];
+            c.getParents();
+            var A = 0;
+            brd.on("move", function(a) {
+                if (boxIsLocked(c)) return;
+                z = !0;
+                a = brd.getUsrCoordsOfMouse(a);
+                e.addPoints(p);
+                e.addPoint(v);
+                v.moveTo(a)
+            });
+            brd.on("up", function(a) {
+                brd.off("move");
+                brd.suspendUpdate();
+                e.ungroup();
+                brd.removeObject(v);
+				
+				!z || 8 > A ? (
+						!1 == y && !1 == ctrlPressed && dehighlightAllObj(), 
+						highlighted.push(brd, c), 
+						brd.removeObject(brd.infobox), 
+						brd.initInfobox(), 
+						brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), 
+						a = c.ancestors[Object.keys(c.ancestors)[0]],
+						a.setAttribute({ size: 8 })
+					) : 
+					checkPolyCoords(c) ? removePolygon(c) : ( 
+						brd.removeObject(brd.infobox), 
+						brd.initInfobox(), 
+						brd.updateInfobox( c.ancestors[Object.keys(c.ancestors)[3]] ), 
+						a = c.ancestors[Object.keys(c.ancestors)[0]], 
+						a.setAttribute({ size: 8 })
+					);
+                brd.unsuspendUpdate()
+            })
+        }
+        if ("polygon" == d) {
+            c = a[1];
+            var z = !1,
+                v = brd.create("point", b, {
+                    visible: !1,
+                    size: 1,
+                    strokeColor: "yellow",
+                    fillColor: "yellow",
+                    showinfobox: !1,
+                    name: "",
+                    withLabel: !1
+                }),
+                p = [],
+                y = !1;
+            if (-1 != highlighted.indexOf(c))
+                for (y = !0, n = 0, r = highlighted.length; n < r; n++) {
+                    q = highlighted[n];
+                    if (boxIsLocked(q)) continue;
+                    for (l in q.ancestors) q.ancestors.hasOwnProperty(l) && p.push(q.ancestors[l]);
+                }
+            else
+                for (l in c.ancestors) c.ancestors.hasOwnProperty(l) && p.push(c.ancestors[l]);
+            brd.renderer.highlight(c);
+            n = c.ancestors[c.getParents()[0]];
+            c.getParents();
+            n.setAttribute({
+                size: 2
+            });
+            A = 0;
+            brd.on("move", function(a) {
+                if (boxIsLocked(c)) return;
+                A++;
+                z = !0;
+                a = brd.getUsrCoordsOfMouse(a);
+                e.addPoints(p);
+                e.addPoint(v);
+                v.moveTo(a)
+            });
+            brd.on("up", function(a) {
+                brd.off("move");
+                brd.suspendUpdate();
+                e.ungroup();
+                brd.removeObject(v);
+                !z || 8 > A ? (!1 == y && !1 == ctrlPressed && dehighlightAllObj(),
+                    highlighted.push(brd, c), brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), a = c.ancestors[Object.keys(c.ancestors)[0]], a.setAttribute({
+                        size: 8
+                    })) : checkPolyCoords(c) ? removePolygon(c) : (brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), a = c.ancestors[Object.keys(c.ancestors)[0]], a.setAttribute({
+                    size: 8
+                }));
+                brd.unsuspendUpdate()
+            })
+        }
+        if ("point" == d) brd.on("up", function(a) {
+            brd.removeObject(brd.infobox);
+            brd.initInfobox()
+        });
+        if (void 0 === d || "image" === d) {
+		   // NEW BOX
+            var s = brd.create("point", b, {	//top left circle border  
+                    size: 2, 
+					strokeColor: "green", 
+					fillColor: "red",
+                    showinfobox: !1,
+                    name: "",
+                    withLabel: !1
+                }),
+                w = brd.create("point", b, {	//bottom right circle border
+                    size: 2, 
+					strokeColor: "green", 
+					fillColor: "none",
+                    showinfobox: !1,
+                    name: "",
+                    withLabel: !1
+                }),
+                u = brd.create("point", [function() {	//bottom left circle border
+                    return s.X()
+                }, function() {
+                    return w.Y()
+                }], {
+					size: 2, 
+					strokeColor: "green", 
+					fillColor: "none",
+                    showinfobox: !1,
+                    name: "",
+                    withLabel: !1
+                }),
+                x = brd.create("point", [function() {	//top right circle border
+                    return w.X()
+                }, function() {
+                    return s.Y()
+                }], {
+					size: 2, 
+					strokeColor: "green", 
+					fillColor: "none",
+                    showinfobox: !1,
+                    name: "",
+                    withLabel: !1
+                }),
+                t = brd.create("polygon", [s, u, w, x], {	//4 square lines
+                    name: "",
+                    withLabel: !1,
+                    hasInnerPoints: !0,
+                    fillColor: "none",
+                    highlightFillColor: mouseoverfillcolor,
+                    borders: {
+                        strokeWidth: 2,
+                        fillColor: "white",
+						strokeColor: boxborder,
+                        highlightStrokeColor: highlightstrokecolor				   
+                    }
+                });
+            t.annotation = {
+				group: "",
+                brand: "",
+                tpoint: "",
+                hits: 0,
+                timestamp: new Date().toISOString()
+            };
+			dehighlightAllObj();
+			// NEW BOX END
+            for (var B in t.borders) t.borders[B].visProp.highlight = !1;
+            brd.on("move", function(a) {
+                a = brd.getUsrCoordsOfMouse(a);
+                w.moveTo(a)
+            });
+            brd.on("up", function(a) {
+                brd.off("move");
+                nullAnnoFlag++;
+				hasNull=1;				  
+                brd.initInfobox();
+                if (checkPolyCoords(t)) removePolygon(t);
+                else {
+                    var b = [s.X(), w.X(), u.X(), x.X()],
+                        c = [s.Y(), w.Y(), u.Y(), x.Y()];
+                    a = Math.max.apply(Math, b);
+                    var b = Math.min.apply(Math, b),
+                        d = Math.max.apply(Math, c),
+                        c = Math.min.apply(Math, c);
+                    brd.suspendUpdate();
+                    s.moveTo([b, c]);
+                    w.moveTo([a, d]);
+                    u.setAttribute({
+                        showinfobox: !0
+                    });
+                    x.setAttribute({
+                        showinfobox: !0
+                    });
+                    highlighted.push(brd, t);
+                    t.on("move", function(a) {
+                        s.setAttribute({
+                            size: 8
+                        });
+                        brd.renderer.highlight(this);
+                        brd.updateInfobox(x)
+                    });
+                    t.on("out", function(a) {
+                        s.setAttribute({
+                            size: 2
+                        })
+                    });
+                    s.on("move", function(a) {
+                        this.setAttribute({
+                            size: 8
+                        })
+                    });
+                    s.on("out", function(a) {
+                        this.setAttribute({
+                            size: 2
+                        })
+                    });
+                    s.on("down", function(a) {
+                        s.on("up", function(a) {
+                            removePolygon(t)
+                        })
+                    });
+                    w.on("down", function(a) {
+                        w.on("up", function(a) {
+                            checkPolyCoords(t) || (brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(t.ancestors[Object.keys(t.ancestors)[3]]), s.setAttribute({
+                                size: 8
+                            }))
+                        })
+                    });
+                    brd.unsuspendUpdate();
+                    brd.updateInfobox(x);
+                    if (window.AnnoSuggest) AnnoSuggest.offer(t);
+                }
+            })
+        }
+    });
+    autosaveTimer = setInterval(function() {
+        storeAnnotationImg();
+        localStorage.allAnnotations = JSON.stringify(allAnnotations)
+        if (window.AnnoSync && AnnoSync.rememberProject) AnnoSync.rememberProject();
+        if (window.AnnoSync && AnnoSync.onAutosave) AnnoSync.onAutosave();
+    }, autosaveInterval)
+}
+
+function gotoImg_noanno(e) {
+    if ("" != document.getElementById("projectFolder").value) {
+        var b = imIndices.indexOf(e);
+        // if (-1 == b || imReadFlag) return a.preventDefault(), !1;
+        imReadFlag = !0;
+        loadImg(b)
+    }
+}
+
+function documentTop(node) {
+    var top = 0;
+    while (node && node.offsetParent) {
+        top += node.offsetTop || 0;
+        node = node.offsetParent;
+    }
+    return top;
+}
+
+function boardLimits() {
+    var cols = colsFolded ? 80 : 480;
+    var box = document.getElementById("box");
+    var top = box ? documentTop(box) : 168;
+    if (!(top > 0)) top = 168;
+    var maxWidth = window.innerWidth - cols - 52;
+    var maxHeight = window.innerHeight - top - 16;
+    var lists = ["brands", "tpoints", "hits"];
+    var i, extra = 0, listTop;
+    for (i = 0; i < lists.length; i++) {
+        var list = document.getElementById(lists[i]);
+        if (!list) continue;
+        listTop = documentTop(list) - top;
+        if (listTop > extra) extra = listTop;
+    }
+    maxHeight -= extra;
+    if (maxWidth < 1) maxWidth = 1;
+    if (maxHeight < 1) maxHeight = 1;
+    return { maxWidth: maxWidth, maxHeight: maxHeight };
+}
+
+function refitLoadedBoard() {
+    if (!brd || !imNaturalW || imReadFlag || typeof im === "undefined" || !im || !im.url) return;
+    try { window.scrollTo(0, 0); } catch (e) {}
+    var url = im.url;
+    storeAnnotationImg();
+    removeAllObj();
+    var size = fitBoard(imNaturalW, imNaturalH);
+    placeBoardImage(url, size.w, size.h);
+    loadAnnotationImg();
+    if (window.AnnoLive && AnnoLive.refresh) AnnoLive.refresh();
+    if (window.AnnoSync && AnnoSync.resurface) AnnoSync.resurface();
+}
+
+function fitBoard(naturalW, naturalH) {
+    var limits = boardLimits();
+    var maxWidth = limits.maxWidth;
+    var maxHeight = limits.maxHeight;
+    var w = naturalW, h = naturalH;
+    if (!(w > 0) || !(h > 0)) return { w: Math.min(860, maxWidth), h: Math.min(480, maxHeight) };
+    var fit = Math.min(maxWidth / w, maxHeight / h);
+    w = Math.max(1, Math.round(w * fit));
+    h = Math.max(1, Math.round(h * fit));
+    return { w: w, h: h };
+}
+
+function placeBoardImage(url, w, h) {
+    if (typeof im !== "undefined" && im) {
+        try { brd.removeObject(im); } catch (err) {}
+        im = void 0;
+    }
+    imWidth = w;
+    imHeight = h;
+    im = brd.create("image", [url, [1, h], [w, h]], {
+        layer: 0,
+        highlightFillColor: mouseoverfillcolor,
+        hightlighted: "off"
+    });
+    im.visProp.highlight = !1;
+    im.isDraggable = !1;
+    document.getElementById("box").setAttribute("style", "width:" + w + "px;height:" + h + "px;");
+    brd.resizeContainer(w, h);
+    var brands = document.getElementById("brands");
+    var points = document.getElementById("tpoints");
+    var hits = document.getElementById("hits");
+    if (brands) brands.style.height = h + "px";
+    if (points) points.style.height = h + "px";
+    if (hits) hits.style.height = Math.min(h, Math.max(120, h - 80)) + "px";
+    brd.setBoundingBox([1, 1, w, h], !1);
+    brd.update();
+}
+
+function syncColsFoldClass() {
+    var main = document.getElementById("mainPart");
+    if (main) main.classList.toggle("cols-folded", colsFolded);
+    var btn = document.getElementById("btn_foldcols");
+    if (!btn) return;
+    btn.classList.toggle("on", colsFolded);
+    btn.title = colsFolded ? "δείξε brands και locations" : "κρύψε brands και locations για μεγαλύτερη εικόνα";
+    btn.textContent = "Στήλες";
+}
+
+function setColsFolded(on) {
+    if (imReadFlag) return;
+    colsFolded = !!on;
+    try { localStorage.setItem("annotool.colsFolded", colsFolded ? "1" : "0"); } catch (e) {}
+    syncColsFoldClass();
+    refitLoadedBoard();
+}
+
+
+var imageObjectUrls = {};
+var decodedFrameImages = {};
+var loadImgGen = 0;
+
+function resetImageObjectUrls() {
+    var name;
+    for (name in imageObjectUrls) {
+        if (!imageObjectUrls.hasOwnProperty(name)) continue;
+        try { URL.revokeObjectURL(imageObjectUrls[name]); } catch (e) {}
+    }
+    imageObjectUrls = {};
+    decodedFrameImages = {};
+}
+
+function imageObjectUrl(name) {
+    var file, url;
+    if (!name || typeof imAll === "undefined" || !imAll[name]) return null;
+    if (imageObjectUrls[name]) return imageObjectUrls[name];
+    file = imAll[name];
+    if (file && file.url) {
+        imageObjectUrls[name] = file.url;
+        return file.url;
+    }
+    try {
+        url = URL.createObjectURL(file);
+    } catch (e) {
+        return null;
+    }
+    imageObjectUrls[name] = url;
+    return url;
+}
+
+function prefetchFrameImage(name) {
+    var url, img;
+    if (!name || decodedFrameImages[name] || typeof imAll === "undefined" || !imAll[name]) return;
+    url = imageObjectUrl(name);
+    if (!url) return;
+    img = new Image();
+    img.onload = function () { decodedFrameImages[name] = img; };
+    if (typeof img.decode === "function") {
+        img.src = url;
+        img.decode().then(function () { decodedFrameImages[name] = img; }).catch(function () {});
+    } else {
+        img.src = url;
+    }
+}
+
+function prefetchAroundIndex(index) {
+    var keep = {}, offsets, i, idx, name, key;
+    if (typeof imIndices === "undefined" || !imIndices || !imIndices.length) return;
+    offsets = [-1, 0, 1, 2, 3];
+    for (i = 0; i < offsets.length; i++) {
+        idx = index + offsets[i];
+        if (idx < 0 || idx >= imIndices.length) continue;
+        name = imIndices[idx];
+        if (!name) continue;
+        keep[name] = true;
+        if (offsets[i] !== 0) prefetchFrameImage(name);
+    }
+    for (key in imageObjectUrls) {
+        if (!imageObjectUrls.hasOwnProperty(key)) continue;
+        if (keep[key]) continue;
+        try { URL.revokeObjectURL(imageObjectUrls[key]); } catch (e) {}
+        delete imageObjectUrls[key];
+        delete decodedFrameImages[key];
+    }
+}
+
+function applyBoardImage(url, img, afterFn) {
+    imNaturalW = img.width;
+    imNaturalH = img.height;
+    var size = fitBoard(img.width, img.height);
+    placeBoardImage(url, size.w, size.h);
+    if (typeof afterFn === "function") afterFn();
+}
+
+function loadImg(a) {
+    if (0 < nullAnnoFlag) {
+        carryStickyFrom = "";
+        highlightNull();
+        return new Noty({ 
+            type: 'error', 
+            theme: 'mint', 
+            layout: 'top',  
+            text: 'NULL : κάποιο τετράγωνο δεν έχει πληροφορία',  
+            timeout: 1000,  
+            closeWith: ['click', 'button'],
+        }).show(), imReadFlag = !1;
+    }
+
+    (a !== imIndex || 2 < brd.objectsList) && prepareChangeImg();
+    prev_imIndex = imIndex;
+    prev_imName = imIndices[imIndex];
+    imName = imIndices[a];
+    
+    imIndex = a;
+    
+    if (0 != imIndices.length) {
+        var url, cached, img, gen;
+        try {
+            url = imageObjectUrl(imName);
+            if (!url) throw new Error("missing image");
+            document.getElementById("imageName").value = bareImageName(imName);
+            gen = ++loadImgGen;
+            var finish = function (readyImg) {
+                if (gen !== loadImgGen) return;
+                applyBoardImage(url, readyImg, afterChangeImg);
+                if (lockedpreset !== "") {
+                    if (imIndex < prev_imIndex) {
+                        lockedpreset = "";
+                        new Noty({
+                            type: 'error',
+                            theme: 'mint',
+                            layout: 'topRight',
+                            text: 'lock preset disabled',
+                            timeout: 1000,
+                            closeWith: ['click', 'button'],
+                        }).show();
+                    } else {
+                        pasteLastPreset(lockedpreset);
+                    }
+                }
+                imReadFlag = !1;
+                prefetchAroundIndex(imIndex);
+            };
+            cached = decodedFrameImages[imName];
+            if (cached && cached.complete && cached.naturalWidth) {
+                finish(cached);
+                return !1;
+            }
+            img = new Image();
+            var settled = false;
+            var once = function () {
+                if (settled) return;
+                settled = true;
+                finish(img);
+            };
+            img.onload = once;
+            img.onerror = function () {
+                if (gen !== loadImgGen || settled) return;
+                settled = true;
+                imIndex = prev_imIndex;
+                imName = imIndices[imIndex];
+                document.getElementById("imageName").value = bareImageName(imName);
+                alert("Could not load requested image.");
+                carryStickyFrom = "";
+                imReadFlag = !1;
+            };
+            img.src = url;
+            if (typeof img.decode === "function") {
+                img.decode().then(once).catch(function () {});
+            }
+            return !1;
+        } catch (err) {
+            imIndex = prev_imIndex;
+            imName = imIndices[imIndex];
+            document.getElementById("imageName").value = bareImageName(imName);
+            alert("Could not load requested image.");
+            carryStickyFrom = "";
+            return !0;
+        }
+    }
+}
+
+
+
+function prepareChangeImg() {
+endPresetGrab();
+// if ( 2 < brd.objectsList.length ){ checkDoubleByPos() }
+if ( 2 < brd.objectsList.length ){ checkDoubleByAnno() }
+    brd.off("up");
+    brd.off("move");
+    brd.off("update");
+	storeAnnotationImg();
+	// storeEXIFdataImg();
+	highlightAllObj();
+    0 != highlighted.length && storeD("end");
+    removeAllObj()	
+}
+
+function afterChangeImg() {
+    allAnnotations.currentImage = imName;
+	resetGUIAnnoInfo();
+	loadAnnotationImg();
+	var fromSticky = carryStickyFrom;
+	carryStickyFrom = "";
+	if (fromSticky) carryStickyBoxes(fromSticky);
+	if ( prevopen==true ) {	preview(); }
+}
+
+function loadAnnFiles() {}
+
+function removeBoxDups(e) {
+	 // e format : "01457"
+}
+
+function annotationIdentity(ann) {
+    var start = ann.startPoint || [], diag = ann.diagPoint || [];
+    return [ann.group || "", ann.brand || "", ann.tpoint || "", ann.hits || 0, start.join(","), diag.join(",")].join("|")
+}
+
+function mergeAnnotationPayload(data) {
+    if (!data || !data.images) return;
+    for (var name in data.images) {
+        if (!data.images.hasOwnProperty(name)) continue;
+        var incoming = data.images[name].annotations || [];
+        if (!incoming.length) continue;
+        if (!allAnnotations.images[name] || !allAnnotations.images[name].annotations) {
+            allAnnotations.images[name] = data.images[name];
+            continue
+        }
+        var existing = allAnnotations.images[name].annotations, seen = {}, i, id;
+        for (i = 0; i < existing.length; i++) seen[annotationIdentity(existing[i])] = 1;
+        for (i = 0; i < incoming.length; i++) {
+            id = annotationIdentity(incoming[i]);
+            if (seen[id]) continue;
+            existing.push(incoming[i]);
+            seen[id] = 1
+        }
+    }
+    if (data.presets && allAnnotations.presets) {
+        for (var slot in allAnnotations.presets) {
+            if (allAnnotations.presets[slot] && allAnnotations.presets[slot].length) continue;
+            if (data.presets[slot] && data.presets[slot].length) allAnnotations.presets[slot] = data.presets[slot]
+        }
+    }
+}
+
+function loadAnnotations() {
+    var input = document.getElementById("loadAnn"),
+        files = input.files,
+        merge = document.getElementById("mergeAnn").checked,
+        pending, parsed, lastCurrent;
+    if (!files || !files.length) return !1;
+    pending = files.length;
+    parsed = new Array(files.length);
+    lastCurrent = "";
+    function finish() {
+        var ok = 0, i, idx;
+        for (i = 0; i < parsed.length; i++) if (parsed[i]) ok++;
+        if (!ok) {
+            input.value = "";
+            return
+        }
+        if (!merge) {
+            for (i = 0; i < parsed.length; i++) {
+                if (!parsed[i]) continue;
+                allAnnotations = parsed[i];
+                if (!allAnnotations.images) allAnnotations.images = {};
+                if (!allAnnotations.presets) allAnnotations.presets = presets;
+                if (parsed[i].currentImage) lastCurrent = parsed[i].currentImage;
+                parsed[i] = null;
+                break
+            }
+        }
+        for (i = 0; i < parsed.length; i++) {
+            if (!parsed[i]) continue;
+            mergeAnnotationPayload(parsed[i]);
+            if (parsed[i].currentImage) lastCurrent = parsed[i].currentImage
+        }
+        if (prefs.seelater && prefs.seelater.length > 0) {
+            $("#laterdiv").show();
+            $("button#laterlist").click()
+        }
+        input.value = "";
+        if (window.AnnoLive && AnnoLive.clearExposurePlan) AnnoLive.clearExposurePlan();
+        if (window.AnnoLive) AnnoLive.refresh();
+        new Noty({ type: "success", theme: "mint", layout: "topRight", text: "μπήκαν " + ok + " json", timeout: 1600 }).show();
+        if (!(brd && brd.renderer)) return;
+        idx = typeof imIndices !== "undefined" ? imIndices.indexOf(lastCurrent) : -1;
+        removeAllObj();
+        loadAnnotationImg();
+        if (idx !== -1 && idx !== imIndex && !imReadFlag) {
+            imReadFlag = !0;
+            loadImg(idx)
+        }
+    }
+    for (var f = 0; f < files.length; f++) {
+        (function (file, index) {
+            var reader = new FileReader;
+            reader.onload = function (ev) {
+                try { parsed[index] = JSON.parse(ev.target.result) }
+                catch (err) {
+                    parsed[index] = null;
+                    new Noty({ type: "error", theme: "mint", layout: "top", text: file.name + " δεν είναι έγκυρο json", timeout: 2000, closeWith: ["click", "button"] }).show()
+                }
+                if (--pending === 0) finish()
+            };
+            reader.onerror = function () {
+                parsed[index] = null;
+                if (--pending === 0) finish()
+            };
+            reader.readAsText(file)
+        })(files[f], f)
+    }
+}
+
+function loadOptions() {	//NOT USED
+	var a = document.getElementById("loadOpts").files[0],
+	b = new FileReader;
+	b.onload = function(a) {
+		a = JSON.parse(a.target.result);
+		// console.log(a.prefs.groups)
+	
+		$("#brands").html("<ul></ul>");
+		//bazei ta ul li
+		for (i in a.prefs.groups) {
+			$("#brands ul").append(
+				$("<li></li>")
+				.attr("id",a.prefs.groups[i])
+				.attr("class","group")
+				.attr("value",a.prefs.groups[i])
+				.html(a.prefs.groups[i])
+			);
+		}
+		$("#brands ul li").append('<ul></ul>');
+		for (key in a.prefs.conns) {
+			if ( a.prefs.conns.hasOwnProperty(key) ){
+				br = a.prefs.conns[key].brand;
+				$("#brands ul li").each(function(){
+					if( $(this).attr('id')==a.prefs.conns[key].group ){
+						$('ul', this).append( $("<li></li>").attr("id",key).attr("value",br).text(br) ); 
+					}
+				})
+			}
+		}
+		disableGroups();
+		resetGUIAnnoInfo();
+		allAnnotations.project = prefs.projectName;
+		allAnnotations.Annotator = prefs.AnnotatorName; //tassos
+		allAnnotations.prefs = prefs;
+		brandsInit();
+	
+		allAnnotations.prefs = a.prefs;
+		for (var e in allAnnotations.presets) 0 == allAnnotations.presets[e].length &&	(allAnnotations.presets[e] = a.presets[e])
+    };
+    b.onloadstart = function(a) {
+
+    };
+    b.onloadend = function(a) {
+    
+    };
+    b.onerror = function(a) {
+        console.error("Could not load the selected annotations file! Code " + a.target.error.code)
+    };
+    b.readAsText(a)
+}
+
+function storeAnnotationImg() {
+    if (void 0 === imName) return !1;
+    var a = {};
+    a.imageName = imName;
+    a.imageIndex = imIndex;
+    a.width = imWidth;
+    a.height = imHeight;
+    a.annotations = [];
+	
+	for (var b = 0; b < brd.objectsList.length; b++){
+		var obj = brd.objectsList[b];
+		if ( obj.getType() == "polygon" && obj.getAttribute("visible") == !0 && !obj._liveSuggest) {
+			var d = {};
+			d.startPoint = getPolyStartDiag(obj).start;
+			d.diagPoint = getPolyStartDiag(obj).diag;
+			d.group = obj.annotation.group;
+			d.brand = obj.annotation.brand;
+			d.tpoint = tpointText(obj.annotation.tpoint);
+			d.hits = obj.annotation.hits;
+			if (obj.annotation.timestamp) d.timestamp = obj.annotation.timestamp;
+			if (obj.annotation.locked) d.locked = true;
+			if (obj._liveFromSuggest || obj.annotation.fromSuggest) d.fromSuggest = true;
+			a.annotations.push(d);
+		}
+	}
+	if( a.annotations.length ){
+		allAnnotations.images[imName] = a
+		var x = imName;
+		allAnnotations.images[x].exifdata || EXIF.getData(imAll[x], function() {
+			allAnnotations.images[x].exifdata = this.exifdata;
+		})
+	}else{
+		delete allAnnotations.images[imName]	//if there was only one box and was deleted
+	}
+}
+
+function storeEXIFdataImg() {
+    // if (void 0 === imName) return !1;
+    // var a = imName;
+    // allAnnotations.images[a].exifdata || EXIF.getData(imAll[a], function() {
+        // allAnnotations.images[a].exifdata = this.exifdata;
+        // return imAll[a].exifdata
+    // })
+}
+
+function loadAnnotationImg() {
+    if (allAnnotations.images.hasOwnProperty(imName)) {
+        var stored = allAnnotations.images[imName];
+        var a = stored.annotations;
+        var sx = 1, sy = 1;
+        if (stored.width > 0 && stored.height > 0 && imWidth > 0 && imHeight > 0) {
+            sx = imWidth / stored.width;
+            sy = imHeight / stored.height;
+        }
+        brd.suspendUpdate();
+        for (var b = 0, c = a.length; b < c; b++) {
+            var poly = createPolygon(
+                [a[b].startPoint[0] * sx, a[b].startPoint[1] * sy],
+                [a[b].diagPoint[0] * sx, a[b].diagPoint[1] * sy]
+            );
+            poly.annotation = {
+                group: a[b].group,
+                brand: a[b].brand,
+                tpoint: tpointText(a[b].tpoint),
+                hits: a[b].hits,
+                timestamp: a[b].timestamp || "",
+                locked: !!a[b].locked
+            };
+            if (a[b].fromSuggest) {
+                poly.annotation.fromSuggest = true;
+                poly._liveFromSuggest = true;
+            }
+            if (poly.annotation.locked) applyBoxLock(poly);
+        }
+        brd.unsuspendUpdate()
+    }
+}
+
+function navCombo() {
+    if (!(window.AnnoLive && AnnoLive.navCombo)) return null;
+    return AnnoLive.navCombo()
+}
+
+function imageHasCombo(name, combo) {
+    if (!combo) return !0;
+    var brand = combo.brand, location = combo.location, i, a;
+    if (name === imName && brd && brd.objectsList && !imReadFlag) {
+        for (i = 0; i < brd.objectsList.length; i++) {
+            a = brd.objectsList[i];
+            if (!a || a.elType !== "polygon" || a._liveSuggest || (a.visProp && a.visProp.visible === !1) || !a.annotation) continue;
+            if ((a.annotation.brand || "").trim() === brand && (a.annotation.tpoint || "").trim() === location) return !0
+        }
+        return !1
+    }
+    var stored = allAnnotations.images && allAnnotations.images[name];
+    var anns = stored && stored.annotations || [];
+    for (i = 0; i < anns.length; i++) {
+        if ((anns[i].brand || "").trim() === brand && (anns[i].tpoint || "").trim() === location) return !0
+    }
+    return !1
+}
+
+function activeNavCombos() {
+    if (window.AnnoLive && AnnoLive.navCombos) {
+        var many = AnnoLive.navCombos();
+        if (many && many.length) return many;
+    }
+    var one = navCombo();
+    return one ? [one] : null;
+}
+
+function imageHasAnyCombo(name, combos) {
+    var i;
+    for (i = 0; i < combos.length; i++) if (imageHasCombo(name, combos[i])) return true;
+    return false;
+}
+
+function seekCombo(fromIndex, dir) {
+    var combos = activeNavCombos(), step = dir < 0 ? -1 : 1, i;
+    if (!combos) {
+        i = fromIndex + step;
+        return i < 0 || i >= imIndices.length ? -1 : i
+    }
+    for (i = fromIndex + step; i >= 0 && i < imIndices.length; i += step) {
+        if (imageHasAnyCombo(imIndices[i], combos)) return i
+    }
+    return -1
+}
+
+function seekComboSteps(fromIndex, dir, count) {
+    var i = fromIndex, n, moved = 0;
+    while (moved < count) {
+        n = seekCombo(i, dir);
+        if (n < 0) break;
+        i = n;
+        moved++
+    }
+    return moved ? i : -1
+}
+
+function firstComboIndex() {
+    var combos = activeNavCombos(), i;
+    if (!combos) return imIndices.length ? 0 : -1;
+    for (i = 0; i < imIndices.length; i++) if (imageHasAnyCombo(imIndices[i], combos)) return i;
+    return -1
+}
+
+function lastComboIndex() {
+    var combos = activeNavCombos(), i;
+    if (!combos) return imIndices.length - 1;
+    for (i = imIndices.length - 1; i >= 0; i--) if (imageHasAnyCombo(imIndices[i], combos)) return i;
+    return -1
+}
+
+function noComboNoty() {
+    var chosen = activeNavCombos();
+    new Noty({
+        type: "warning",
+        theme: "mint",
+        layout: "topRight",
+        text: chosen && chosen.length ? "δεν υπάρχει άλλη εικόνα με αυτούς τους συνδυασμούς" : "δεν υπάρχει άλλη εικόνα με αυτόν τον συνδυασμό",
+        timeout: 1400
+    }).show()
+}
+
+function goToFilteredStart() {
+    if (!(brd && brd.renderer) || imReadFlag || !imIndices.length) return !1;
+    var idx = firstComboIndex();
+    if (idx < 0) return noComboNoty(), !1;
+    if (idx === imIndex) return !1;
+    imReadFlag = !0;
+    loadImg(idx)
+}
+
+var carryStickyFrom = "";
+
+function carryBoxesOn() {
+	var box = document.getElementById("carryBoxes");
+	return !!(box && box.checked);
+}
+
+function syncCarryToggle() {
+	var box = document.getElementById("carryBoxes");
+	if (!box) return;
+	var stored = null;
+	try { stored = localStorage.getItem("annotool.carryOn"); } catch (e) {}
+	box.checked = stored !== "0";
+	box.addEventListener("change", function () {
+		try { localStorage.setItem("annotool.carryOn", box.checked ? "1" : "0"); } catch (e) {}
+	});
+}
+
+function loadNextImg() {
+    if (!(brd && brd.renderer) || imReadFlag) return !1;
+    var a = seekCombo(imIndex, 1);
+    if (a < 0) return activeNavCombos() ? noComboNoty() : !1;
+    carryStickyFrom = carryBoxesOn() ? (imName || "") : "";
+    imReadFlag = !0;
+    loadImg(a);
+    if (nullAnnoFlag < 0) alert("nullAnnoFlag < 0")
+}
+
+function checkDoubleByPos(){
+	var a = brd.objects, b, pos=[];
+	for ( b in a ){
+		if ( a[b].getType()=="polygon" ){
+			if ( $.inArray( $('#box_'+a[b].id).position().top+"_"+$('#box_'+a[b].id).position().left, pos ) >-1 ){
+				new Noty({ type: 'error', theme: 'mint', layout: 'top',  
+					text: 'διπλότυπο στην προηγούμενη εικόνα : '+a[b].annotation.brand+" - "+a[b].annotation.tpoint,  timeout: 3000,  closeWith: ['click', 'button'],}).show();
+					break
+			}else{
+				pos.push( $('#box_'+a[b].id).position().top+"_"+$('#box_'+a[b].id).position().left )
+			}
+		}
+	}
+}
+
+function checkDoubleByAnno(){
+	var a = brd.objects, b, list = [], i, j, pi, pj, left, right;
+	for ( b in a ){
+		if ( !a[b] || a[b].getType() != "polygon" || a[b]._liveSuggest || !a[b].annotation ) continue;
+		if ( a[b].getAttribute && a[b].getAttribute("visible") == false ) continue;
+		list.push(a[b]);
+	}
+	for ( i = 0; i < list.length; i++ ){
+		for ( j = i + 1; j < list.length; j++ ){
+			left = list[i].annotation;
+			right = list[j].annotation;
+			if ( (left.brand || "") + "__" + (left.tpoint || "") !== (right.brand || "") + "__" + (right.tpoint || "") ) continue;
+			pi = getPolyStartDiag(list[i]);
+			pj = getPolyStartDiag(list[j]);
+			if ( Math.abs(pi.start[0] - pj.start[0]) < 2 && Math.abs(pi.start[1] - pj.start[1]) < 2 && Math.abs(pi.diag[0] - pj.diag[0]) < 2 && Math.abs(pi.diag[1] - pj.diag[1]) < 2 ){
+				new Noty({ type: 'error', theme: 'mint', layout: 'top',
+					text: 'διπλότυπο στην προηγούμενη εικόνα : '+left.brand+" - "+left.tpoint,  timeout: 3000,  closeWith: ['click', 'button'],}).show();
+				return;
+			}
+		}
+	}
+}
+
+function loadNext10Img() {
+    if (!(brd && brd.renderer) || imReadFlag) return !1;
+    var a = seekComboSteps(imIndex, 1, 10);
+    if (a < 0 || a === imIndex) return !1;
+    imReadFlag = !0;
+    loadImg(a)
+}
+
+function loadPrevImg() {
+    if (!(brd && brd.renderer) || imReadFlag) return !1;
+    var a = seekCombo(imIndex, -1);
+    if (a < 0) return activeNavCombos() ? noComboNoty() : !1;
+    imReadFlag = !0;
+    loadImg(a)
+}
+
+function loadPrev10Img() {
+    if (!(brd && brd.renderer) || imReadFlag) return !1;
+    var a = seekComboSteps(imIndex, -1, 10);
+    if (a < 0 || a === imIndex) return !1;
+    imReadFlag = !0;
+    loadImg(a)
+}
+
+function loadFirstImg() {
+    if (!(brd && brd.renderer) || imReadFlag || !imIndices.length) return !1;
+    var idx = firstComboIndex();
+    if (idx < 0) return activeNavCombos() ? noComboNoty() : !1;
+    if (idx === imIndex) return !1;
+    imReadFlag = !0;
+    loadImg(idx)
+}
+
+function loadLastImg() {
+    if (!(brd && brd.renderer) || imReadFlag || !imIndices.length) return !1;
+    var last = lastComboIndex();
+    if (last < 0) return activeNavCombos() ? noComboNoty() : !1;
+    if (last === imIndex) return !1;
+    imReadFlag = !0;
+    loadImg(last)
+}
+
+function goNextImg() {
+    loadNextImg()
+}
+
+function goBackImg() {
+    document.getElementById("backButton").blur();
+    if (imReadFlag) return !1;
+    imReadFlag = !0;
+    brd && brd.renderer && loadImg(prev_imIndex)
+}
+
+function removeHighlightedObj() {
+    brd.suspendUpdate();
+    brd.removeObject(brd.infobox);
+    brd.initInfobox();
+    for (var a = highlighted, b = 0, c = a.length; b < c; b++) {
+        if (a[b].ancestors)
+            for (var d in a[b].ancestors) brd.removeObject(a[b].ancestors[d]);
+        void 0 === a[b].annotation || "" !== a[b].annotation.brand && "" !== a[b].annotation.tpoint || nullAnnoFlag--;
+		// if(nullAnnoFlag<0){nullAnnoFlag=0}					  
+        brd.removeObject(a[b])
+    }
+    highlighted.length = 0;
+    brd.unsuspendUpdate();
+    resetGUIAnnoInfo()
+}
+
+function removeAllObj() {
+    brd.suspendUpdate();
+    brd.removeObject(brd.infobox);
+    brd.initInfobox();
+    var a = brd.objects,
+        b;
+    for (b in a)
+        if (a[b] && "polygon" == a[b].elType && !1 != a[b].getAttribute("visible")) {
+            var c = a[b].getParents();
+            brd.removeObject(a[b]);
+            for (var d in c) brd.removeObject(c[d])
+        }
+    brd.unsuspendUpdate();
+    removeHighlightedObj();
+    nullAnnoFlag = 0;
+    resetGUIAnnoInfo()
+}
+
+function removePresetObj(a) {
+    allAnnotations.presets[a] = []
+}
+
+highlighted.push = function(a, b) {
+    switch (b.elType) {
+        case "polygon":
+            if (-1 == this.indexOf(b)) {
+                b.setAttribute({
+                    fillColor: "none"
+                });
+                for (var c = 0, d = b.borders.length; c < d; c++) b.borders[c].setAttribute({
+                    strokewidth: highlightstrokecolorwidth,
+					strokecolor: highlightstrokecolor
+                });
+                0 == highlighted.length ? updateGUIAnnoInfo(b) : resetGUIAnnoInfo();
+                return Array.prototype.push.apply(this, [b])
+            }
+            b.setAttribute({
+                fillColor: "none"
+            });
+            c = 0;
+            for (d = b.borders.length; c < d; c++) b.borders[c].setAttribute({
+                strokewidth: boxborderwidth,
+                strokecolor: boxborder	//inactive box borders
+            });
+            2 == highlighted.length && (c = highlighted.slice(0),  c.splice(this.indexOf(b), 1), updateGUIAnnoInfo(c[0]));
+            1 == highlighted.length && resetGUIAnnoInfo();
+            return Array.prototype.splice.apply(this, [this.indexOf(b), 1])
+    }
+};
+
+function updateGUIAnnoInfo(a) {
+    var gr = a.annotation.group,
+		br = a.annotation.brand,
+        tp = a.annotation.tpoint,
+		hits = a.annotation.hits;
+    if ("" == br ){ 
+		$("#brands ul li").removeClass('selected');
+		$("#tpoints ul li").removeClass('selected');
+	}else{ 
+		$("#brands ul li").removeClass('selected');
+		$("#tpoints ul li").removeClass('selected');
+		
+		if ( prefs.conns.hasOwnProperty( gr+"__"+br ) ) { // GIA TIN PERIPTOSI POU EXEI ALLAKSEI TO ONOMA BRAND-GROUP I EXEI AFAIRETHEI KATI AP TA DUO
+			$("#brands ul li[id='"+gr+"__"+br+"']").addClass('selected')
+			brandScrollTo();
+			fillTouchpoints( gr+"__"+br ); 
+			$("#tpoints ul li").filter(function () { return $(this).text() === tp; }).first().addClass("selected")
+			
+			if ( "" == hits ){ 
+				document.getElementById("hits").selectedIndex = -1;
+			}else {
+				document.getElementById("hits").value = hits
+			}
+			tpointsInit();
+		}
+	}
+}
+
+function resetGUIAnnoInfo() {
+    $("#brands ul li").removeClass('selected');
+    $("#tpoints ul li").removeClass('selected');
+    document.getElementById("hits").selectedIndex = -1
+	$("#tpoints ul").remove();
+}
+
+function highlightAllObj() {
+    brd.suspendUpdate();
+    var a = brd.objects,
+        b;
+    for (b in a) a[b] && "polygon" == a[b].getType() && !1 != a[b].getAttribute("visible") && -1 == highlighted.indexOf(a[b]) && highlighted.push(brd, a[b]);
+    brd.unsuspendUpdate()
+}
+
+function highlightNull() {
+    brd.suspendUpdate();
+    var a = brd.objects,
+        b;
+    for (b in a) a[b] && "polygon" == a[b].getType() && ""== a[b].annotation.brand && !1 != a[b].getAttribute("visible") && -1 == highlighted.indexOf(a[b]) && highlighted.push(brd, a[b]);
+    brd.unsuspendUpdate()
+}
+
+function dehighlightAllObj() {
+    brd.suspendUpdate();
+    var a = brd.objects,
+        b;
+    for (b in a) a[b] && "polygon" == a[b].getType() && !1 != a[b].getAttribute("visible") && -1 != highlighted.indexOf(a[b]) && highlighted.push(brd, a[b]);
+    brd.unsuspendUpdate()
+	$("#brands").scrollTop(0)
+}
+
+function removePolygon(a) {
+    void 0 === a.annotation || "" !== a.annotation.brand && "" !== a.annotation.tpoint || nullAnnoFlag--;
+	// if(nullAnnoFlag<0){nullAnnoFlag=0}						   
+    brd.removeObject(brd.infobox);
+    brd.initInfobox(); - 1 < highlighted.indexOf(a) && highlighted.push(brd, a);
+    for (var b in a.ancestors) brd.removeObject(a.ancestors[b]);
+    brd.removeObject(a)
+}
+
+function checkPolyCoords(a) {
+    var b = a.ancestors[Object.keys(a.ancestors)[0]].X();
+    1 > b ? b = 1 : b > imWidth && (b = imWidth);
+    var c = a.ancestors[Object.keys(a.ancestors)[0]].Y();
+    1 > c ? c = 1 : c > imHeight && (c = imHeight);
+    var d = a.ancestors[Object.keys(a.ancestors)[2]].X();
+    1 > d ? d = 1 : d > imWidth && (d = imWidth);
+    var e = a.ancestors[Object.keys(a.ancestors)[2]].Y();
+    1 > e ? e = 1 : e > imHeight && (e = imHeight);
+    brd.suspendUpdate();
+    a.ancestors[Object.keys(a.ancestors)[0]].moveTo([b, c]);
+    a.ancestors[Object.keys(a.ancestors)[2]].moveTo([d, e]);
+    if (10 > a.borders[0].L() ||
+        10 > a.borders[1].L()) return brd.unsuspendUpdate(), !0;
+    brd.unsuspendUpdate();
+    return !1
+}
+
+function getPolyStartDiag(a) {
+    var b = a.getParents()[0],
+        c = brd.objects[b].X(),
+        b = brd.objects[b].Y(),
+        d = a.getParents()[2];
+    a = brd.objects[d].X();
+    d = brd.objects[d].Y();
+    return {
+        start: [c, b],
+        diag: [a, d]
+    }
+}
+
+function createPolygon(a, b) {		// pasted preset
+    var c = brd.create("point", a, {
+            size: 2,
+            strokeColor: dotstrokecolor,
+            fillColor: "none",
+            showinfobox: !1,
+            name: "",
+            withLabel: !1
+        }),
+		d = brd.create("point", b, {
+            size: 2,
+            strokeColor: dotstrokecolor,
+            fillColor: "none",
+            showinfobox: !1,
+            name: "",
+            withLabel: !1
+        }),
+		e = brd.create("point", [ function(){ 
+            return c.X()
+        }, function() {
+            return d.Y()
+        }], {
+            size: 2,
+            strokeColor: dotstrokecolor,
+            fillColor: "#CC0000",
+            name: "",
+            withLabel: !1
+        }),
+        g = brd.create("point", [function() {
+            return d.X()
+        }, function() {
+            return c.Y()
+        }], {
+            size: 2,
+            strokeColor: dotstrokecolor,
+            fillColor: "#CC0000",
+            name: "",
+            withLabel: !1
+        }),
+		f = brd.create("polygon", [c, e, d, g], {
+            name: "",
+            withLabel: !1,
+            hasInnerPoints: !0,
+            fillColor: "none",
+            highlightFillColor: mouseoverfillcolor,
+            borders: {
+                strokeWidth: boxborderwidth,
+                strokeColor: boxborder,
+                highlightStrokeColor: highlightstrokecolor
+            }
+        });
+    f.annotation = {
+        group: "",
+        brand: "",
+        tpoint: "",
+        hits: 0
+    };
+    f.on("move", function(a) {
+        c.setAttribute({
+            size: 8
+        });
+        brd.renderer.highlight(this);
+        brd.updateInfobox(g)
+    });
+    f.on("out", function(a) {
+        c.setAttribute({
+            size: 2
+        })
+    });
+    c.on("move", function(a) {        
+		this.setAttribute({
+            size: 8
+        })
+    });
+    c.on("out", function(a) {
+        this.setAttribute({
+            size: 2
+        })
+    });
+    c.on("down", function(a) {
+        c.on("up", function(a) {
+            removePolygon(f)
+        })
+    });
+    d.on("down", function(a) {
+        d.on("up", function(a) {
+            checkPolyCoords(f) ? removePolygon(polygon) : (brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(f.ancestors[Object.keys(f.ancestors)[3]]), c.setAttribute({
+                size: 8
+            }))
+        })
+    });
+    for (var h in f.borders) f.borders[h].visProp.highlight = !1;
+    return f
+}
+
+function clonePolyInvisible(a) {
+    var b = getPolyStartDiag(a);
+    a = a.annotation;
+    b = createPolygon(b.start, b.diag);
+    b.setAttribute({
+        visible: !1
+    });
+    for (var c in b.ancestors) b.ancestors.hasOwnProperty(c) && b.ancestors[c].setAttribute({
+        visible: !1
+    });
+    b.annotation = {};
+    b.annotation.conn = a.conn;
+    b.annotation.brand = a.brand;
+    b.annotation.tpoint = a.tpoint;
+    b.annotation.hits = a.hits;
+    return b
+}
+
+function createPreset(x) {
+	var a = [];
+    for ( b = 0 ; b < highlighted.length; b++) {
+		var d = getPolyStartDiag(highlighted[b]),
+		e = highlighted[b].annotation;
+        d.annotation = {};
+		if ( e.brand!=="" && e.tpoint!=="" ) { 
+			d.annotation.group = e.group;
+			d.annotation.brand = e.brand;
+			d.annotation.tpoint = e.tpoint;
+			d.annotation.hits = e.hits;
+			a.push(d)
+			new Noty({ type: 'success', theme: 'mint', layout: 'bottomRight',  text: 'η μνήμη αποθηκεύτηκε στο <b>: '+x+'</b>',  progressBar: false, timeout: 1000 }).show()
+		}
+		else{
+			new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'έχεις αποθηκεύσει κενό annotation',  timeout: 3000,  closeWith: ['click', 'button'],}).show();
+		}
+
+    }
+	return a
+}
+
+function storePreset(a) {
+	if ( highlighted.length>0 ){
+		removePresetObj(a);
+		var b = createPreset(a);
+		allAnnotations.presets[a] = b
+	}
+	else {
+		new Noty({ type: 'error',  layout: 'topRight',  text: 'κανένα επιλεγμένο τετράγωνο',  timeout: 3000,  closeWith: ['click', 'button'],}).show();
+	}
+}
+
+function boxIsLocked(poly) {
+	return !!(poly && poly.annotation && poly.annotation.locked);
+}
+
+function applyBoxLock(poly) {
+	var on = boxIsLocked(poly), i, k, pt;
+	if (!poly) return;
+	if (poly.borders) {
+		for (i = 0; i < poly.borders.length; i++) {
+			if (poly.borders[i] && poly.borders[i].setAttribute) poly.borders[i].setAttribute({ dash: on ? 2 : 0 });
+		}
+	}
+	if (poly.ancestors) {
+		for (k in poly.ancestors) {
+			pt = poly.ancestors[k];
+			if (pt && pt.setAttribute) pt.setAttribute({ fixed: !!on });
+		}
+	}
+}
+
+function toggleBoxLock() {
+	var list = highlighted, i, lock = false;
+	if (!list || !list.length) return;
+	for (i = 0; i < list.length; i++) if (!boxIsLocked(list[i])) lock = true;
+	for (i = 0; i < list.length; i++) {
+		if (!list[i] || !list[i].annotation) continue;
+		list[i].annotation.locked = lock;
+		applyBoxLock(list[i]);
+	}
+	storeAnnotationImg();
+}
+
+function storeD(a) {
+    removePresetObj(a);
+	
+	for (var x = [], b = 0, c = highlighted.length; b < c; b++) {
+		var d = getPolyStartDiag(highlighted[b]),
+		e = highlighted[b].annotation;
+        if (!e) continue;
+        d.annotation = {};
+			d.annotation.group = e.group;
+			d.annotation.brand = e.brand;
+			d.annotation.tpoint = e.tpoint;
+			d.annotation.hits = e.hits;
+			if (e.locked) d.annotation.locked = true;	// R-locked: pasted at the same spot, still locked
+			x.push(d)
+    }
+	
+    allAnnotations.presets[a] = x
+}
+
+function pastePreset(a) {
+	endPresetGrab();
+	dehighlightAllObj();
+    a = allAnnotations.presets[a];
+    if (!a || !a.length) return;
+    brd.suspendUpdate();
+    var made = [];
+
+    for (var b = 0, c = a.length; b < c; b++) {
+        var d = a[b].annotation,
+        e = createPolygon(a[b].start, a[b].diag);
+        e.annotation = {};
+        e.annotation.group = d.group;
+        e.annotation.brand = d.brand;
+        e.annotation.tpoint = tpointText(d.tpoint);
+        e.annotation.hits = d.hits;
+        e.annotation.timestamp = new Date().toISOString();
+        if (d.locked) {
+            e.annotation.locked = true;
+            applyBoxLock(e);
+            continue;
+        }
+
+		highlighted.push(brd, e);
+        made.push(e);
+    }
+    brd.unsuspendUpdate();
+    beginPresetGrab(made);
+}
+
+function pasteLastPreset(a) {
+	endPresetGrab();
+	dehighlightAllObj();
+    a = allAnnotations.presets[a];
+    if (!a || !a.length) return;
+    brd.suspendUpdate();
+    var made = [];
+
+    for (var b = 0, c = a.length; b < c; b++) {
+        var d = a[b].annotation,
+        e = createPolygon(a[b].start, a[b].diag);
+        e.annotation = {};
+		e.annotation.group = d.group;
+        e.annotation.brand = d.brand;
+        e.annotation.tpoint = tpointText(d.tpoint);
+        e.annotation.hits = d.hits;
+        e.annotation.timestamp = new Date().toISOString();
+        if (d.locked) {
+            e.annotation.locked = true;
+            applyBoxLock(e);
+            continue;
+        }
+        made.push(e);
+    }
+    brd.unsuspendUpdate();
+    beginPresetGrab(made);
+}
+
+function pointerOverBox(e) {
+    var board = document.getElementById("box");
+    if (!board || !e) return false;
+    var r = board.getBoundingClientRect();
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+}
+
+function grabBBox() {
+    if (!presetGrab) return null;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, i, a, b;
+    for (i = 0; i < presetGrab.pairs.length; i++) {
+        a = presetGrab.pairs[i][0];
+        b = presetGrab.pairs[i][1];
+        if (!a || !b) continue;
+        minX = Math.min(minX, a.X(), b.X());
+        maxX = Math.max(maxX, a.X(), b.X());
+        minY = Math.min(minY, a.Y(), b.Y());
+        maxY = Math.max(maxY, a.Y(), b.Y());
+    }
+    if (minX === Infinity) return null;
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY, w: maxX - minX, h: maxY - minY };
+}
+
+function shiftPresetGrab(dx, dy) {
+    var box = grabBBox();
+    if (!box) return;
+    if (imWidth > 0 && box.w <= imWidth) {
+        if (box.minX + dx < 1) dx = 1 - box.minX;
+        if (box.maxX + dx > imWidth) dx = imWidth - box.maxX;
+    }
+    if (imHeight > 0 && box.h <= imHeight) {
+        if (box.minY + dy < 1) dy = 1 - box.minY;
+        if (box.maxY + dy > imHeight) dy = imHeight - box.maxY;
+    }
+    brd.suspendUpdate();
+    var i, a, b;
+    for (i = 0; i < presetGrab.pairs.length; i++) {
+        a = presetGrab.pairs[i][0];
+        b = presetGrab.pairs[i][1];
+        if (!a || !b) continue;
+        a.moveTo([a.X() + dx, a.Y() + dy]);
+        b.moveTo([b.X() + dx, b.Y() + dy]);
+    }
+    brd.unsuspendUpdate();
+}
+
+function scalePresetGrab(factor) {
+    if (!presetGrab) return;
+    var box = grabBBox();
+    if (!box || box.w < 1 || box.h < 1) return;
+    if (factor < 1 && (box.w * factor < 12 || box.h * factor < 12)) return;
+    var cx = (box.minX + box.maxX) / 2, cy = (box.minY + box.maxY) / 2, i, a, b;
+    brd.suspendUpdate();
+    for (i = 0; i < presetGrab.pairs.length; i++) {
+        a = presetGrab.pairs[i][0];
+        b = presetGrab.pairs[i][1];
+        if (!a || !b) continue;
+        a.moveTo([cx + (a.X() - cx) * factor, cy + (a.Y() - cy) * factor]);
+        b.moveTo([cx + (b.X() - cx) * factor, cy + (b.Y() - cy) * factor]);
+    }
+    brd.unsuspendUpdate();
+}
+
+function presetCenter() {
+    if (!presetGrab) return null;
+    var sx = 0, sy = 0, n = 0, i, a, b;
+    for (i = 0; i < presetGrab.pairs.length; i++) {
+        a = presetGrab.pairs[i][0];
+        b = presetGrab.pairs[i][1];
+        if (!a || !b || typeof a.X !== "function" || typeof b.X !== "function") continue;
+        sx += (a.X() + b.X()) / 2;
+        sy += (a.Y() + b.Y()) / 2;
+        n++;
+    }
+    if (!n) return null;
+    return [sx / n, sy / n];
+}
+
+function snapPresetToCursor() {
+    if (!presetGrab || !presetPointer || !pointerOverBox(presetPointer) || !brd) return;
+    var usr, center;
+    try { usr = brd.getUsrCoordsOfMouse(presetPointer); } catch (err) { return; }
+    if (!usr) return;
+    center = presetCenter();
+    if (!center) return;
+    shiftPresetGrab(usr[0] - center[0], usr[1] - center[1]);
+}
+
+function beginPresetGrab(polys, quiet) {
+    endPresetGrab();
+    if (!polys || !polys.length || !brd) return;
+    var pairs = [], i, poly, parents;
+    for (i = 0; i < polys.length; i++) {
+        poly = polys[i];
+        if (!poly || !poly.getParents) continue;
+        parents = poly.getParents();
+        if (!parents || parents.length < 3 || !brd.objects[parents[0]] || !brd.objects[parents[2]]) continue;
+        pairs.push([brd.objects[parents[0]], brd.objects[parents[2]], poly]);
+        poly.setAttribute({ fillColor: "rgba(240,180,41,0.28)" });
+    }
+    if (!pairs.length) return;
+    presetGrab = { pairs: pairs, last: null };
+    if (presetPointer && pointerOverBox(presetPointer)) {
+        try { presetGrab.last = brd.getUsrCoordsOfMouse(presetPointer); } catch (err) {}
+    }
+    if (!quiet) snapPresetToCursor();
+    var board = document.getElementById("box");
+    if (board) board.classList.add("preset-grab");
+    if (quiet) return;
+    new Noty({
+        type: "info",
+        theme: "mint",
+        layout: "bottomRight",
+        text: "Σύρε για τη θέση, ροδέλα για το μέγεθος, κλικ για να μείνει",
+        progressBar: false,
+        timeout: 1600
+    }).show();
+}
+
+function endPresetGrab() {
+    if (!presetGrab) return;
+    var i, poly;
+    for (i = 0; i < presetGrab.pairs.length; i++) {
+        poly = presetGrab.pairs[i][2];
+        if (poly && poly.setAttribute) poly.setAttribute({ fillColor: "none" });
+    }
+    presetGrab = null;
+    var board = document.getElementById("box");
+    if (board) board.classList.remove("preset-grab");
+}
+
+function movePresetGrab(e) {
+    if (!presetGrab || !brd) return;
+    if (!pointerOverBox(e)) {
+        presetGrab.last = null;
+        return;
+    }
+    var usr;
+    try { usr = brd.getUsrCoordsOfMouse(e); } catch (err) { return; }
+    if (!usr) return;
+    if (!presetGrab.last) {
+        presetGrab.last = usr;
+        return;
+    }
+    var dx = usr[0] - presetGrab.last[0], dy = usr[1] - presetGrab.last[1];
+    presetGrab.last = usr;
+    if (Math.abs(dx) + Math.abs(dy) < 0.01) return;
+    shiftPresetGrab(dx, dy);
+}
+
+document.addEventListener("mousemove", function (e) {
+    presetPointer = e;
+    movePresetGrab(e);
+}, true);
+document.addEventListener("mousedown", function (e) {
+    if (!presetGrab) return;
+    var board = document.getElementById("box");
+    var inside = board && (e.target === board || board.contains(e.target));
+    endPresetGrab();
+    if (inside) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}, true);
+function onPresetWheel(e) {
+    if (!presetGrab || !pointerOverBox(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var dy = e.deltaY;
+    if (dy === undefined || dy === 0) dy = -(e.wheelDelta || 0) / 3;
+    if (!dy) return;
+    var factor = Math.exp(-dy / 500);
+    if (factor < 0.82) factor = 0.82;
+    if (factor > 1.22) factor = 1.22;
+    scalePresetGrab(factor);
+}
+document.addEventListener("wheel", onPresetWheel, { capture: true, passive: false });
+document.addEventListener("mousewheel", onPresetWheel, { capture: true, passive: false });
+
+function makePolyVisible(a) {
+    var b = {},
+        b = "object" === typeof a ? a : brd.objects[a];
+    a = b.getParents();
+    for (var c = 0, d = a.length - 1; c < d; c++) brd.objects[a[c]].setAttribute({
+        visible: !0
+    });
+    b.setAttribute({
+        visible: !0
+    })
+}
+
+function makePolyInvisible(a) {
+    var b = {},
+        b = "object" === typeof a ? a : brd.objects[a];
+    a = b.getParents();
+    for (var c = 0, d = a.length - 1; c < d; c++) brd.objects[a[c]].setAttribute({
+        visible: !1
+    });
+    b.setAttribute({
+        visible: !1
+    })
+}
+
+function checkImagePart(a, b, c, d) {
+    return c < a / 4 ? d < b / 2 ? "B" : "E" : c >= a / 4 && c < a / 2 ? d < b / 4 ? "B" : d >= 3 * b / 4 ? "E" : "A" : c >= a / 2 && c < 3 * a / 4 ? d < b / 4 ? "C" : d >= 3 * b / 4 ? "D" : "A" : d < b / 2 ? "C" : "D"
+}
+
+function hour24ToSecs(a) {
+    var b = "",
+        b = "number" == typeof a ? a.toString() : a,
+        b = b.replace(/:/g, "");
+    a = 0;
+    if (4 <= b.length) {
+        a = parseInt(b.substr(0, 2), 10);
+        var c = parseInt(b.substr(2, 2), 10),
+            d = 0;
+        6 <= b.length && (d = 6 == b.length ? parseInt(b.substr(4, 2), 10) : 0);
+        a = 3600 * a + 60 * c + d
+    }
+    return a
+}
+
+function secsToHour24(a) {
+    var b = 0,
+        b = "string" == typeof a ? parseInt(a, 10) : a;
+    a = Math.floor(b / 3600);
+    var c = Math.floor((b - 3600 * a) / 60),
+        b = b - 3600 * a - 60 * c;
+    10 > a && (a = "0" + a);
+    10 > c && (c = "0" + c);
+    10 > b && (b = "0" + b);
+    return a + ":" + c + ":" + b
+}
+
+function isKeyPressed(event) {
+    if (event.shiftKey) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+$('#toptoggle i').click(function(){
+	var open = $('#toppanel').is(':visible');
+	$('#toppanel').stop(true, true)[open ? 'hide' : 'show']();
+	$('#toptoggle i').toggleClass('fa-arrow-circle-o-down fa-arrow-circle-o-up');
+	refitLoadedBoard();
+})
+var switchToInput = function () {
+	var thisId = $(this).attr('id')
+    var $input = $("<input>", {
+        val: $(this).text(),
+        type: "text"
+    });
+    $input.addClass("editable").attr('id', thisId);
+    $(this).replaceWith($input);
+	$input.on('keyup', function (e) {
+		if (e.keyCode == 13) {
+			$input.blur()
+		}
+	});
+    $input.on("blur", switchToSpan);
+    $input.select();
+};
+var switchToSpan = function () {
+	var thisId = $(this).attr('id')
+    var $span = $("<span>", {
+        text: $(this).val()
+    });
+    $span.addClass("editable").attr('id', thisId);
+    $(this).replaceWith($span);
+    $span.on("click", switchToInput);
+	if ( thisId == "projectName" ){ 
+		prefs.projectName = $('span#projectName').text()
+		allAnnotations.project = prefs.projectName;
+		if (window.AnnoSync && AnnoSync.noteProject) AnnoSync.noteProject(prefs.projectName);
+	}
+	if ( thisId == "AnnotatorName" ){ 
+		prefs.AnnotatorName = $('span#AnnotatorName').text()
+		allAnnotations.Annotator = prefs.AnnotatorName;
+	}
+};
+$("span.editable").on("click", switchToInput);
+
+syncCarryToggle();
+try { colsFolded = localStorage.getItem("annotool.colsFolded") === "1"; } catch (e) {}
+syncColsFoldClass();
+$("#btn_foldcols").on("click", function () { setColsFolded(!colsFolded); });
+var boardFitTimer = 0;
+window.addEventListener("resize", function () {
+	clearTimeout(boardFitTimer);
+	boardFitTimer = setTimeout(refitLoadedBoard, 200);
+});
+
+

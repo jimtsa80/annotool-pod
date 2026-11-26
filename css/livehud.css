@@ -1,0 +1,665 @@
+#comboGlance {
+	position: relative;
+	z-index: 30;
+	width: 1360px;
+	margin: 0 auto;
+	padding: 0 8px 6px;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	text-align: left;
+}
+#comboGlanceOpen,
+#mapGlanceOpen {
+	border: 0;
+	border-radius: 999px;
+	background: #2f9e8f;
+	color: #fff;
+	font-family: "Didact Gothic", sans-serif;
+	font-size: 13px;
+	line-height: 22px;
+	padding: 0 10px;
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+#mapGlanceOpen.on { background: #1f6f4a; }
+#comboGlanceOpen:hover,
+#mapGlanceOpen:hover,
+#btn_combos.on,
+#btn_captions.on {
+	background: #21786c;
+	border-color: #186158;
+	color: #fff;
+}
+#imagestools #btn_captions.on {
+	background: #1f8a4c;
+	border-color: #176b3b;
+}
+#mainPart #col1 {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	float: none;
+	width: 1360px;
+}
+#mainPart #leftcol {
+	float: none;
+	flex: 0 0 auto;
+}
+#mainPart #selectColumns {
+	float: none;
+	flex: 0 0 440px;
+	width: 440px;
+	margin-left: 12px;
+}
+#mainPart #box {
+	float: none;
+}
+#imagestools #btn_foldcols {
+	float: none;
+	border-radius: 4px;
+	width: auto;
+	min-width: 72px;
+	height: 34px;
+	margin: 0 8px 0 0;
+	padding: 4px 10px;
+	font-weight: bold;
+	line-height: 24px;
+	color: #333;
+}
+#btn_foldcols.on {
+	background: #1f6f9a;
+	border-color: #16567a;
+	color: #fff;
+}
+#mainPart.cols-folded #col2,
+#mainPart.cols-folded #col3 {
+	display: none;
+}
+#mainPart.cols-folded #selectColumns {
+	flex: 0 0 52px;
+	width: 52px;
+	height: auto;
+}
+#mainPart.cols-folded #hits {
+	height: 620px;
+}
+#mainPart.cols-folded #box {
+	width: 1290px;
+}
+#comboGlanceBody {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	background: rgba(0, 0, 0, 0.2);
+	border-radius: 6px;
+	padding: 3px 10px;
+	min-height: 26px;
+	overflow: visible;
+	color: #d5e2e7;
+	font-size: 13px;
+}
+#comboView {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+}
+#comboViewBtn {
+	width: 100%;
+	height: 24px;
+	border: 0;
+	border-radius: 4px;
+	background: rgba(0, 0, 0, 0.28);
+	color: #fff;
+	font-family: "Didact Gothic", sans-serif;
+	font-size: 13px;
+	text-align: left;
+	padding: 0 8px;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#comboViewBtn.on {
+	background: #1f6f4a;
+}
+#comboViewMenu {
+	display: none;
+	position: absolute;
+	z-index: 80;
+	top: 28px;
+	left: 0;
+	width: 340px;
+	max-height: 360px;
+	overflow: auto;
+	padding: 8px;
+	border-radius: 8px;
+	background: #1c282f;
+	color: #eef3f5;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+}
+#comboViewMenu.open { display: block; }
+#comboViewSearch {
+	width: 100%;
+	box-sizing: border-box;
+	height: 28px;
+	margin: 0 0 6px;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: rgba(0, 0, 0, 0.22);
+	color: #fff;
+	padding: 0 8px;
+	font-family: inherit;
+}
+#comboViewAll {
+	display: block;
+	width: 100%;
+	margin: 0 0 6px;
+	border: 0;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: bold;
+	line-height: 26px;
+	cursor: pointer;
+}
+#comboViewAll:hover { background: #2f9e8f; }
+.combo-view-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	padding: 4px 2px;
+	font-size: 13px;
+	font-weight: normal;
+	cursor: pointer;
+}
+.combo-view-row.is-on { color: #ffd27a; }
+.combo-view-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#comboViewMenu input.combo-view-pin {
+	position: static;
+	opacity: 1;
+	appearance: auto;
+	-webkit-appearance: checkbox;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	accent-color: #f0b429;
+	background: #fff;
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+#howmanyleft {
+	float: none;
+	flex: 0 0 460px;
+	width: 460px;
+	min-width: 460px;
+	max-width: 460px;
+	margin-left: 8px;
+	color: #fff;
+	font-weight: bold;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	text-align: right;
+	line-height: 22px;
+	padding: 0;
+	overflow: hidden;
+}
+#firstButton, #lastButton {
+	float: right;
+	width: auto;
+	min-width: 52px;
+	color: #333;
+}
+#comboGlanceNum {
+	font-weight: bold;
+	font-size: 16px;
+	color: #b6f3cf;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+#comboGlance.is-near #comboGlanceNum { color: #ffd27a; }
+#comboGlance.is-over #comboGlanceNum { color: #ff9b9b; }
+#comboGlanceHint {
+	color: #c5d4da;
+	white-space: nowrap;
+}
+#comboGlanceBar {
+	display: none;
+	width: 72px;
+	height: 6px;
+	border-radius: 99px;
+	background: rgba(255, 255, 255, 0.16);
+	overflow: hidden;
+	flex: 0 0 auto;
+}
+#comboGlanceBar.on { display: inline-block; }
+#comboGlanceBar i {
+	display: block;
+	height: 100%;
+	width: 0;
+	background: #7ddec4;
+}
+#comboGlance.is-near #comboGlanceBar i { background: #ffd27a; }
+#comboGlance.is-over #comboGlanceBar i { background: #ff8b8b; }
+
+#mapPanel {
+	display: none;
+	position: fixed;
+	z-index: 40;
+	width: 420px;
+	max-height: 72vh;
+	flex-direction: column;
+	background: #1c282f;
+	color: #eef3f5;
+	border-radius: 12px;
+	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	font-family: "Didact Gothic", sans-serif;
+	overflow: hidden;
+	text-align: left;
+}
+#mapPanel.open { display: flex; }
+#mapPanelHead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 8px 6px 12px;
+	cursor: move;
+	user-select: none;
+	background: #24343c;
+	flex: 0 0 auto;
+}
+#mapPanelTitle {
+	font-weight: bold;
+	font-size: 15px;
+	flex: 1;
+}
+#mapPanelCount {
+	font-weight: normal;
+	color: #9fb4bd;
+	font-size: 12px;
+}
+#mapPanelClose {
+	border: 0;
+	background: transparent;
+	color: #d5e2e7;
+	font-size: 20px;
+	line-height: 20px;
+	width: 26px;
+	cursor: pointer;
+}
+#mapPanelWhen {
+	flex: 0 0 auto;
+	margin: 8px 12px 4px;
+	color: #9fd9cf;
+	font-size: 12px;
+	line-height: 1.35;
+}
+#mapPanelWhen:empty { display: none; }
+#mapList {
+	overflow: auto;
+	padding: 4px 0 6px;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+#mapEmpty {
+	display: none;
+	color: #9fb4bd;
+	padding: 8px 14px 12px;
+	font-size: 13px;
+}
+#mapPanelFoot {
+	flex: 0 0 auto;
+	color: #8ea3ab;
+	font-size: 11px;
+	line-height: 1.35;
+	padding: 6px 12px 8px;
+	background: #1c282f;
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.map-row {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin: 0 8px 6px;
+	padding: 6px 8px 6px 10px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.04);
+	box-shadow: inset 3px 0 0 transparent;
+}
+.map-row.is-good { box-shadow: inset 3px 0 0 #3dce7a; }
+.map-row.is-mid { box-shadow: inset 3px 0 0 #f0b429; }
+.map-row.is-bad { box-shadow: inset 3px 0 0 #ff6b63; }
+.map-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+}
+.map-score {
+	flex: 0 0 auto;
+	min-width: 3.4em;
+	font-size: 14px;
+	font-weight: bold;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+	color: #9fb4bd;
+}
+.map-row.is-good .map-score { color: #7ddec4; }
+.map-row.is-mid .map-score { color: #ffd27a; }
+.map-row.is-bad .map-score { color: #ff8b8b; }
+.map-meta {
+	flex: 0 0 auto;
+	color: #9fb4bd;
+	font-size: 12px;
+	white-space: nowrap;
+}
+.map-meta:empty { display: none; }
+
+#comboPanel {
+	display: none;
+	position: fixed;
+	z-index: 40;
+	width: 400px;
+	max-height: 72vh;
+	flex-direction: column;
+	background: #1c282f;
+	color: #eef3f5;
+	border-radius: 12px;
+	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	font-family: "Didact Gothic", sans-serif;
+	overflow: hidden;
+	text-align: left;
+}
+#comboPanel.open { display: flex; }
+#comboPanelHead,
+#comboSearch,
+#comboPinHint,
+#comboTargetHint,
+#comboEmpty,
+#comboPanelFoot { flex: 0 0 auto; }
+#comboPanelHead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 8px 6px 12px;
+	cursor: move;
+	user-select: none;
+	background: #24343c;
+}
+#comboPanelTitle {
+	font-weight: bold;
+	font-size: 15px;
+	flex: 1;
+}
+#comboPanelCount {
+	font-weight: normal;
+	color: #9fb4bd;
+	font-size: 12px;
+}
+#comboMetric {
+	display: flex;
+	background: rgba(0, 0, 0, 0.25);
+	border-radius: 999px;
+	padding: 2px;
+}
+#comboMetric button {
+	border: 0;
+	background: transparent;
+	color: #c5d4da;
+	border-radius: 999px;
+	font-family: inherit;
+	font-size: 12px;
+	line-height: 20px;
+	padding: 0 8px;
+	cursor: pointer;
+}
+#comboMetric button.on {
+	background: #2f9e8f;
+	color: #fff;
+}
+#comboLockClear {
+	display: none;
+	border: 0;
+	border-radius: 999px;
+	background: #f0b429;
+	color: #1a1408;
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: bold;
+	line-height: 20px;
+	padding: 0 8px;
+	cursor: pointer;
+}
+#comboLockClear.on { display: inline-block; }
+#comboTargetBtn,
+#comboSortSize {
+	border: 0;
+	border-radius: 999px;
+	background: #2f9e8f;
+	color: #fff;
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: bold;
+	line-height: 20px;
+	padding: 0 8px;
+	cursor: pointer;
+}
+#comboSortSize { background: rgba(255, 255, 255, 0.08); }
+#comboSortSize.on { background: #f0b429; color: #1a1408; }
+#comboTargetFile { display: none; }
+#comboTargetHint {
+	display: none;
+	margin: 0 10px 6px;
+	color: #9fd9cf;
+	font-size: 12px;
+	line-height: 1.35;
+}
+#comboPanelClose {
+	border: 0;
+	background: transparent;
+	color: #d5e2e7;
+	font-size: 20px;
+	line-height: 20px;
+	width: 26px;
+	cursor: pointer;
+}
+#comboPinHint {
+	margin: 0 10px 6px;
+	padding: 6px 8px;
+	border-radius: 6px;
+	background: rgba(240, 180, 41, 0.16);
+	color: #ffd27a;
+	font-size: 12px;
+	line-height: 1.35;
+}
+#comboPinHint b { color: #fff3d0; }
+#comboSearch {
+	margin: 8px 10px 6px;
+	height: 28px;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: rgba(0, 0, 0, 0.22);
+	color: #fff;
+	padding: 0 8px;
+	font-family: inherit;
+}
+#comboList {
+	overflow: auto;
+	padding: 4px 0 6px;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+#comboEmpty {
+	display: none;
+	color: #9fb4bd;
+	padding: 8px 14px 12px;
+	font-size: 13px;
+}
+#comboPanelFoot {
+	color: #8ea3ab;
+	font-size: 11px;
+	line-height: 1.35;
+	padding: 6px 12px 8px;
+	background: #1c282f;
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.combo-row {
+	position: relative;
+	margin: 0 8px 6px;
+	padding: 6px 8px 5px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.04);
+	overflow: hidden;
+}
+.combo-row.is-here { box-shadow: inset 3px 0 0 #3dbea2; }
+.combo-row.is-watched { outline: 1px solid #7ddec4; }
+.combo-bar {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 0;
+	background: rgba(61, 190, 162, 0.16);
+	pointer-events: none;
+}
+.combo-row.is-near .combo-bar { background: rgba(255, 210, 122, 0.18); }
+.combo-row.is-over .combo-bar { background: rgba(255, 139, 139, 0.2); }
+.combo-main,
+.combo-meta {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.combo-pin-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin: 0;
+	color: #ffd27a;
+	font-size: 13px;
+	font-weight: bold;
+	white-space: nowrap;
+	cursor: pointer;
+}
+#comboPanel input.combo-pin {
+	position: static;
+	opacity: 1;
+	appearance: auto;
+	-webkit-appearance: checkbox;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	accent-color: #f0b429;
+	background: #fff;
+	cursor: pointer;
+}
+.combo-row.is-locked {
+	box-shadow: inset 3px 0 0 #f0b429;
+	background: rgba(240, 180, 41, 0.16);
+}
+.combo-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+}
+.combo-num {
+	font-weight: bold;
+	font-size: 16px;
+	color: #b6f3cf;
+	font-variant-numeric: tabular-nums;
+}
+.combo-row.is-near .combo-num { color: #ffd27a; }
+.combo-row.is-over .combo-num { color: #ff9b9b; }
+.combo-meta {
+	margin-top: 2px;
+	color: #a9bdc5;
+	font-size: 12px;
+}
+.combo-sub { flex: 1; min-width: 0; }
+.combo-rate {
+	color: #ffd27a;
+	font-weight: bold;
+	white-space: nowrap;
+	font-size: 12px;
+}
+.combo-here {
+	display: none;
+	background: rgba(61, 190, 162, 0.2);
+	color: #b6f3cf;
+	border-radius: 99px;
+	padding: 0 6px;
+	line-height: 16px;
+	font-size: 11px;
+}
+.combo-target-label {
+	margin: 0;
+	font-weight: normal;
+	color: #8ea3ab;
+	white-space: nowrap;
+}
+.combo-target {
+	width: 58px;
+	height: 20px;
+	margin-left: 4px;
+	padding: 0 4px;
+	border-radius: 4px;
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	background: rgba(0, 0, 0, 0.28);
+	color: #fff;
+	font-family: inherit;
+	font-size: 12px;
+}
+.combo-target::-webkit-outer-spin-button,
+.combo-target::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+.combo-row.flash { outline: 1px solid #7ddec4; }
+
+#annoCaptions {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 20;
+	overflow: hidden;
+}
+.anno-cap {
+	position: absolute;
+	max-width: 240px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: 1px 5px;
+	border-radius: 3px;
+	background: rgba(12, 16, 20, 0.82);
+	color: #fff;
+	font-family: "Didact Gothic", sans-serif;
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: bold;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.anno-cap.is-null { background: rgba(176, 32, 32, 0.9); }

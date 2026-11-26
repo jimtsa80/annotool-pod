@@ -1,0 +1,67 @@
+/* server mode + training badge (serversync.js) */
+#srvMode { display: inline-flex; align-items: center; margin-left: 6px; vertical-align: middle; font-size: 12px; }
+#srvModeBtn { height: 18px; width: 88px; box-sizing: border-box; padding: 0 6px; border: 0; border-radius: 3px; background: rgba(255, 255, 255, 0.14); color: #e8eef2; font-size: 11px; font-weight: 600; line-height: 18px; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; }
+#srvModeBtn:hover { background: rgba(255, 255, 255, 0.26); }
+#srvModeBtn .srv-btn-text { display: inline-block; width: 42px; flex: 0 0 42px; overflow: hidden; text-align: left; }
+#srvDot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; display: inline-block; visibility: hidden; }
+#srvDot.srv-green, #srvDot.srv-waking, #srvDot.srv-red { visibility: visible; }
+/* fixed 12px slot inside the button: icons never change the toolbar width */
+#srvHint { display: inline-block; width: 12px; height: 12px; flex: 0 0 12px; line-height: 12px; font-size: 10px; font-style: normal; font-weight: 700; text-align: center; overflow: hidden; color: transparent; }
+#srvHint.srv-hint-wait { color: #f2c230; }
+#srvHint.srv-hint-wait::after { content: ""; display: inline-block; width: 8px; height: 8px; margin: 1px 0 0; border: 1.5px solid rgba(242, 194, 48, 0.25); border-top-color: #f2c230; border-radius: 50%; animation: srvSpin 0.8s linear infinite; vertical-align: top; }
+#srvHint.srv-hint-ok { color: #3dce7a; }
+#srvHint.srv-hint-ok::after { content: "✓"; }
+#srvHint.srv-hint-down { color: #f2c230; }
+#srvHint.srv-hint-down::after { content: "!"; }
+#srvHint.srv-hint-train { color: #8fd0ff; }
+#srvHint.srv-hint-train::after { content: "●"; animation: srvPulse 1.2s ease-in-out infinite; }
+@keyframes srvSpin { to { transform: rotate(360deg); } }
+.srv-green { background: #3dce7a; box-shadow: 0 0 0 2px rgba(61, 206, 122, 0.35); }
+.srv-waking { background: #f2c230; animation: srvPulse 1.2s ease-in-out infinite; }
+.srv-red { background: #d23b2e; }
+@keyframes srvPulse { 50% { opacity: 0.35; } }
+#srvPanel { position: fixed; top: 0; left: 0; z-index: 100000; min-width: 250px; max-width: 300px; padding: 6px 8px; border-radius: 5px; background: #22303a; color: #f2f6f8; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); font-size: 11px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
+#srvPanel[hidden] { display: none !important; }
+#srvPanel .srv-row { margin: 3px 0; }
+#srvPanel input[type=text], #srvPanel input[type=password], #srvPanel input:not([type]) { width: 100px; height: 20px; font-size: 11px; padding: 0 5px; border: 0; border-radius: 3px; color: #111; }
+#srvPanel #srvUrl { width: 232px; }
+#srvPanel select { height: 20px; font-size: 11px; color: #111; max-width: 220px; }
+#srvPanel button { height: 20px; font-size: 11px; padding: 0 7px; border: 0; border-radius: 3px; background: #1f7eb0; color: #fff; }
+#srvPanel a { color: #8fd0ff; }
+#srvPanel .srv-light { width: 10px; height: 10px; border-radius: 50%; display: inline-block; vertical-align: middle; }
+#srvInfo { color: #c7d6e0; font-size: 11px; white-space: normal; max-width: 300px; }
+/* badge + Stop: next to the model selector, never blocking */
+#trainBadge { padding: 0 6px; border-radius: 9px; font-size: 11px; line-height: 16px; color: #fff; background: #3a4b57; }
+#trainBadge[hidden], #trainStopBox[hidden] { display: none !important; }
+#trainBadge.busy { background: #8a5a00; }
+#trainBadge.prep { background: #49606e; }
+#trainBadge.new { background: #0c6b5c; }
+#trainStopBox { display: inline-flex; align-items: center; gap: 5px; padding: 0 2px 0 6px; border-radius: 4px; background: rgba(210, 59, 46, 0.18); color: #ffd9d4; }
+#trainStopBtn { height: 18px; padding: 0 7px; border: 0; border-radius: 3px; background: #c0392b; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; }
+/* in server mode the local-trainer controls are not used */
+body.anno-server-mode #liveSyncBtn, body.anno-server-mode #liveModelChoiceLabel { display: none !important; }
+
+/* non-blocking overlay: never takes space in the toolbar */
+#srvFrameToast {
+	position: fixed;
+	left: 50%;
+	bottom: 18px;
+	transform: translateX(-50%);
+	z-index: 100001;
+	pointer-events: none;
+	box-sizing: border-box;
+	max-width: 90vw;
+	padding: 5px 12px;
+	border-radius: 4px;
+	background: rgba(34, 48, 58, 0.92);
+	color: #f2f6f8;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 16px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+#srvFrameToast.on { opacity: 1; }

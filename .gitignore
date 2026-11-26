@@ -1,0 +1,5 @@
+# local/backup files must never be published
+*.bak
+*.log
+.env
+*.pt
