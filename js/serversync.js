@@ -718,7 +718,7 @@
 			'<div class="srv-row"><b>Λειτουργία</b> <label><input type="radio" name="srvModeSel" value="local"> Local</label> ' +
 			'<label><input type="radio" name="srvModeSel" value="server"> Server</label></div>' +
 			'<div class="srv-row srv-s"><input id="srvUrl" type="text" placeholder="' + DEFAULT_URL + '" autocomplete="off"></div>' +
-			(WAKER_URL ? '<div class="srv-row srv-s"><input id="srvWake" type="password" placeholder="wake key (ξύπνημα server)" autocomplete="off"></div>' : '') +
+			(WAKER_URL ? '<div class="srv-row srv-s" id="srvWakeRow"><input id="srvWake" type="password" placeholder="Βάλε το κλειδί και πάτα Ξύπνα server" autocomplete="off" title="Βάλε το κλειδί και πάτα Ξύπνα server"> <button type="button" id="srvWakeBtn" title="Ξύπνα server">Ξύπνα server</button></div>' : '') +
 			'<div class="srv-row srv-s" id="srvHealth"><i class="srv-light"></i> <span id="srvHealthText"></span></div>' +
 			'<form class="srv-row srv-s" id="srvLogin"><input id="srvUser" placeholder="username" autocomplete="username"> ' +
 			'<input id="srvPass" type="password" placeholder="password" autocomplete="current-password"> <button type="submit">Login</button></form>' +
@@ -753,10 +753,20 @@
 		url.value = ls(URL_KEY) || DEFAULT_URL;
 		url.addEventListener("change", function () { ls(URL_KEY, this.value.trim() || null); health.state = "off"; markDown(); });
 		var wk = document.getElementById("srvWake");
+		function applyWakeKey() {
+			ls(WAKE_KEY, wk && wk.value.trim() || null);
+			wake.warned = false;
+			wake.nextCheck = 0;
+			paintPanel();
+			if (health.state !== "green") maybeWake();
+		}
 		if (wk) {
 			wk.value = wakeKey();
-			wk.addEventListener("change", function () { ls(WAKE_KEY, this.value.trim() || null); wake.warned = false; wake.nextCheck = 0; if (health.state !== "green") maybeWake(); });
+			wk.addEventListener("change", applyWakeKey);
+			wk.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); applyWakeKey(); } });
 		}
+		var wkBtn = document.getElementById("srvWakeBtn");
+		if (wkBtn) wkBtn.addEventListener("click", function (e) { e.preventDefault(); applyWakeKey(); });
 		document.getElementById("srvLogin").addEventListener("submit", function (e) {
 			e.preventDefault();
 			var u = document.getElementById("srvUser").value.trim(), p = document.getElementById("srvPass").value;
@@ -772,6 +782,7 @@
 		if (!isServer()) return { cls: "", title: "τοπική λειτουργία (Ζωντανά = τοπικός trainer)" };
 		var hs = health.state, st = lastStatus && lastStatus.state;
 		if (!session.token && hs === "green") return { cls: "srv-hint-down", title: "⚠️ Η σύνδεση έληξε, κάνε ξανά login" };
+		if (WAKER_URL && !wakeKey() && hs !== "green") return { cls: "srv-hint-down", title: "Ο server κοιμάται, βάλε το wake key και πάτα Ξύπνα" };
 		if (wake.active && hs !== "green") return { cls: "srv-hint-wait", title: wake.newPod ? "⏳ Ξυπνάει (νέο pod)…" : "⏳ Ξυπνάω τον server, 1–2 λεπτά…" };
 		if (hs === "red") return { cls: "srv-hint-down", title: "⚠️ Ο server δεν απαντά" };
 		if (hs === "waking" || hs === "off") return { cls: "srv-hint-wait", title: "ξυπνάει… περίμενε" };
@@ -796,7 +807,8 @@
 		if (!server) return;
 		var ht = document.getElementById("srvHealthText"), light = ui.panel.querySelector(".srv-light");
 		light.className = "srv-light srv-" + (hs === "off" ? "waking" : hs);
-		ht.textContent = hs === "green" ? (hint.title || "server ζωντανός") : (hs === "red" && !wake.active) ? "μη διαθέσιμος (δουλεύεις κανονικά, οι αλλαγές κρατιούνται)" :
+		ht.textContent = (WAKER_URL && !wakeKey() && hs !== "green") ? "Ο server κοιμάται, βάλε το wake key και πάτα Ξύπνα" :
+			hs === "green" ? (hint.title || "server ζωντανός") : (hs === "red" && !wake.active) ? "μη διαθέσιμος (δουλεύεις κανονικά, οι αλλαγές κρατιούνται)" :
 			(wake.active ? (wake.newPod ? "⏳ Ξυπνάει (νέο pod), 2–4 λεπτά… · " : "⏳ Ξυπνάω τον server, 1–2 λεπτά… · ") : "ξυπνάει… περίμενε · ") + secs(Date.now() - (health.since || Date.now()));
 		var logged = !!session.token;
 		document.getElementById("srvLogin").style.display = logged ? "none" : "";
