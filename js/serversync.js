@@ -141,7 +141,7 @@
 
 	/* ------------------------------------------------------------------ API + health */
 	var health = { state: "off", since: 0, timer: null, delay: 5000, info: null };
-	var wake = { active: false, busy: false, nextCheck: 0, warned: false };
+	var wake = { active: false, busy: false, nextCheck: 0, warned: false, newPod: false };
 	var session = { token: ls(TOKEN_KEY) || "", user: null, families: [] };
 	try { session.user = JSON.parse(ls(USER_KEY) || "null"); } catch (e) { session.user = null; }
 
@@ -185,7 +185,7 @@
 			var was = health.state;
 			health.state = state;
 			if (state === "waking" && was !== "red") health.since = Date.now();
-			if (state === "green") { health.delay = 5000; wake.active = false; kick(); }
+			if (state === "green") { health.delay = 5000; wake.active = false; wake.newPod = false; kick(); }
 			paintPanel();
 		}
 	}
@@ -219,6 +219,20 @@
 			return res.json().then(function (j) { j = j || {}; j._status = res.status; return j; }, function () { return { _status: res.status }; });
 		}, function (e) { if (t) clearTimeout(t); throw e; });
 	}
+	/* the waker may have replaced the pod (old GPU taken): adopt its new proxy URL, but never overwrite a custom/local URL */
+	var POD_URL_RE = /^https:\/\/[a-z0-9]{8,20}-\d+\.proxy\.runpod\.net\/?$/;
+	function adoptPodUrl(u) {
+		if (!u || !POD_URL_RE.test(u)) return false;
+		u = u.replace(/\/+$/, "");
+		var cur = baseUrl();
+		if (u === cur || !(POD_URL_RE.test(cur) || !ls(URL_KEY))) return false;
+		ls(URL_KEY, u);
+		var inp = document.getElementById("srvUrl");
+		if (inp) inp.value = u;
+		wake.newPod = true;
+		scheduleHealth(0);
+		return true;
+	}
 	/* server not answering: ask the waker; if the pod is stopped, start it and keep polling /health every ~10 s */
 	function maybeWake() {
 		if (!WAKER_URL || !isServer() || wake.busy || !wakeKey()) return;
@@ -230,14 +244,20 @@
 				if (!wake.warned) { wake.warned = true; toast("Wake key λάθος — δες στο πάνελ του Server", "warning"); }
 				return;
 			}
-			if (st.state === "stopped") {
+			adoptPodUrl(st.url); /* pod id changed since we last looked: follow it */
+			if (st.state === "stopped" || st.state === "gone") {
 				wake.active = true;
 				paintPanel();
 				return wakeApi("POST", "/wake").then(function (w) {
 					if (w._status === 429) wake.nextCheck = Date.now() + 30000; /* just started by someone else / rate limited: keep waiting */
+					if (w.action === "created") wake.newPod = true; /* old GPU was taken: a new pod is being built (a bit longer) */
+					adoptPodUrl(w.url);
+					if (w._status === 502 || w.error) wake.nextCheck = Date.now() + 30000;
+					paintPanel();
 				});
 			}
-			wake.active = st.state === "running" && wake.active; /* running but /health not ready yet: still booting */
+			if (st.state === "starting") wake.active = true;
+			else wake.active = st.state === "running" && wake.active; /* running but /health not ready yet: still booting */
 			if (!wake.active) paintPanel();
 		}).catch(function () {}).then(function () { wake.busy = false; });
 	}
@@ -752,7 +772,7 @@
 		if (!isServer()) return { cls: "", title: "τοπική λειτουργία (Ζωντανά = τοπικός trainer)" };
 		var hs = health.state, st = lastStatus && lastStatus.state;
 		if (!session.token && hs === "green") return { cls: "srv-hint-down", title: "⚠️ Η σύνδεση έληξε, κάνε ξανά login" };
-		if (wake.active && hs !== "green") return { cls: "srv-hint-wait", title: "⏳ Ξυπνάω τον server, 1–2 λεπτά…" };
+		if (wake.active && hs !== "green") return { cls: "srv-hint-wait", title: wake.newPod ? "⏳ Ξυπνάει (νέο pod)…" : "⏳ Ξυπνάω τον server, 1–2 λεπτά…" };
 		if (hs === "red") return { cls: "srv-hint-down", title: "⚠️ Ο server δεν απαντά" };
 		if (hs === "waking" || hs === "off") return { cls: "srv-hint-wait", title: "ξυπνάει… περίμενε" };
 		if (st === "training" || st === "training_family" || st === "preparing_training" || st === "queued")
@@ -777,7 +797,7 @@
 		var ht = document.getElementById("srvHealthText"), light = ui.panel.querySelector(".srv-light");
 		light.className = "srv-light srv-" + (hs === "off" ? "waking" : hs);
 		ht.textContent = hs === "green" ? (hint.title || "server ζωντανός") : (hs === "red" && !wake.active) ? "μη διαθέσιμος (δουλεύεις κανονικά, οι αλλαγές κρατιούνται)" :
-			(wake.active ? "⏳ Ξυπνάω τον server, 1–2 λεπτά… · " : "ξυπνάει… περίμενε · ") + secs(Date.now() - (health.since || Date.now()));
+			(wake.active ? (wake.newPod ? "⏳ Ξυπνάει (νέο pod), 2–4 λεπτά… · " : "⏳ Ξυπνάω τον server, 1–2 λεπτά… · ") : "ξυπνάει… περίμενε · ") + secs(Date.now() - (health.since || Date.now()));
 		var logged = !!session.token;
 		document.getElementById("srvLogin").style.display = logged ? "none" : "";
 		document.getElementById("srvWho").innerHTML = "";
