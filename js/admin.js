@@ -143,6 +143,24 @@
 
 	var loaders = { users: loadUsers, families: function () { return loadUsers().then(loadFamilies); }, activity: loadActivity, jobs: loadJobs };
 	var tab = "users", jobsTimer = null;
+	var IDLE_MS = 10 * 60 * 1000, lastActivity = Date.now(), quietOn = false;
+	function tabHidden() { return typeof document.hidden === "boolean" ? document.hidden : document.visibilityState === "hidden"; }
+	function quiet() { return tabHidden() || Date.now() - lastActivity >= IDLE_MS; }
+	function noteActivity() {
+		var was = quietOn || quiet();
+		lastActivity = Date.now();
+		quietOn = tabHidden();
+		if (was && !quietOn && tab === "jobs") loadJobs().catch(function () {});
+	}
+	document.addEventListener("visibilitychange", function () {
+		if (tabHidden()) { quietOn = true; return; }
+		lastActivity = Date.now();
+		quietOn = false;
+		if (tab === "jobs") loadJobs().catch(function () {});
+	});
+	document.addEventListener("pointerdown", noteActivity, true);
+	document.addEventListener("keydown", noteActivity, true);
+	document.addEventListener("click", noteActivity, true);
 	Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (b) {
 		b.addEventListener("click", function () {
 			tab = b.getAttribute("data-tab");
@@ -162,8 +180,19 @@
 			$("#loginBox").hidden = true; $("#app").hidden = false;
 			loaders[tab]().catch(fail);
 			clearInterval(jobsTimer);
-			jobsTimer = setInterval(function () { if (tab === "jobs") loadJobs().catch(function () {}); }, 4000);
+			jobsTimer = setInterval(function () {
+				var q = quiet();
+				if (q) { quietOn = true; return; }
+				if (tab === "jobs") loadJobs().catch(function () {});
+			}, 4000);
 		}, function (e) { if (e.message !== "login") { $("#srv").textContent = "server μη διαθέσιμος: " + base(); showLogin(); } });
 	}
 	start();
+	window.AnnoAdminIdle = {
+		ms: IDLE_MS,
+		quiet: quiet,
+		noteActivity: noteActivity,
+		lastActivity: function (t) { if (arguments.length) lastActivity = t; return lastActivity; },
+		isOn: function () { return quietOn || quiet(); }
+	};
 })();

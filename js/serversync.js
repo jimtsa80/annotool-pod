@@ -30,6 +30,9 @@
 	var RED_AFTER_MS = 10 * 60 * 1000;
 	var STATUS_MS = 4000;
 	var PRED_MS = 8000;
+	var IDLE_MS = 10 * 60 * 1000;
+	var lastActivity = Date.now();
+	var quietOn = false;
 	var UPLOAD_BATCH = 12;
 
 	function ls(key, value) {
@@ -200,6 +203,7 @@
 	}
 	function checkHealth() {
 		if (!isServer()) { setHealth("off"); return; }
+		if (quiet() && !wake.active) return;
 		api("GET", "/health", undefined, { noAuth: true, timeout: 8000 }).then(function (h) {
 			health.info = h;
 			if (h && h.status === "ready") { setHealth("green"); scheduleHealth(20000); }
@@ -237,6 +241,7 @@
 	function maybeWake() {
 		if (!WAKER_URL || !isServer() || wake.busy || !wakeKey()) return;
 		if (document.visibilityState === "hidden" || Date.now() < wake.nextCheck) return;
+		if (!wake.active && Date.now() - lastActivity >= IDLE_MS) return;
 		wake.busy = true;
 		wake.nextCheck = Date.now() + 10000;
 		wakeApi("GET", "/status").then(function (st) {
@@ -267,6 +272,41 @@
 		scheduleHealth(wake.active ? 10000 : health.state === "red" ? 30000 : health.delay);
 	}
 	function online() { return isServer() && health.state === "green"; }
+
+	function tabHidden() {
+		return typeof document.hidden === "boolean" ? document.hidden : document.visibilityState === "hidden";
+	}
+	function quiet() {
+		if (!isServer()) return false;
+		if (tabHidden()) return true;
+		return Date.now() - lastActivity >= IDLE_MS;
+	}
+	function noteActivity() {
+		lastActivity = Date.now();
+		if (quietOn && !tabHidden()) resumeFromQuiet();
+	}
+	function resumeFromQuiet() {
+		quietOn = false;
+		if (!isServer() || tabHidden()) { paintPanel(); return; }
+		scheduleHealth(0);
+		if (online()) {
+			refreshMe();
+			kick();
+			pollStatus();
+			maybePredict(false);
+			pollPredictions();
+		}
+		paintPanel();
+	}
+	function applyQuiet() {
+		var q = quiet();
+		if (q) {
+			if (!quietOn) { quietOn = true; paintPanel(); }
+		} else if (quietOn) {
+			resumeFromQuiet();
+		}
+		return q;
+	}
 
 	/* ------------------------------------------------------------------ virtual folder */
 	var vfiles = {};       // name -> {text, mtime}
@@ -593,6 +633,7 @@
 		paintPanel();
 	}
 	function pollStatus() {
+		if (quiet()) return;
 		if (!online() || !current.family) return;
 		api("GET", famPath() + "/status").then(function (s) {
 			lastStatus = s;
@@ -608,6 +649,7 @@
 		}, function () {});
 	}
 	function maybePredict(force) {
+		if (!force && quiet()) return;
 		if (!online() || !current.project || !current.doc) return;
 		var cur = current.doc.currentImage || null, keys = frameKeys();
 		var moved = lastPredictCur == null ? Infinity : Math.abs(keys.indexOf(cur) - keys.indexOf(lastPredictCur));
@@ -621,6 +663,7 @@
 		api("POST", projPath() + "/predict", { current: cur }).catch(function () { endPredWait(); });
 	}
 	function pollPredictions() {
+		if (quiet()) return;
 		if (!online() || !current.project) return;
 		api("GET", projPath() + "/predictions").then(function (doc) {
 			if (!doc || typeof doc !== "object") return;
@@ -680,6 +723,7 @@
 	}
 	function tick() {
 		if (!isServer()) return;
+		applyQuiet();
 		ensureLink();
 		if (online()) { flushQueue(); uploadLoop(); }
 		paintPanel();
@@ -706,6 +750,7 @@
 		});
 	}
 	function refreshMe() {
+		if (quiet()) return;
 		if (!session.token || !online()) return;
 		api("GET", "/auth/me").then(function (me) {
 			session.user = { username: me.username, role: me.role };
@@ -808,6 +853,7 @@
 		if (!session.token && hs === "green") return { cls: "srv-hint-down", title: "⚠️ Η σύνδεση έληξε, κάνε ξανά login" };
 		if (WAKER_URL && !wakeKey() && hs !== "green") return { cls: "srv-hint-down", title: "Ο server κοιμάται, βάλε το wake key και πάτα Ξύπνα" };
 		if (wake.active && hs !== "green") return { cls: "srv-hint-wait", title: wake.newPod ? "⏳ Ξυπνάει (νέο pod)…" : "⏳ Ξυπνάω τον server, 1–2 λεπτά…" };
+		if (quiet()) return { cls: "srv-hint-wait", title: "σε αναμονή" };
 		if (hs === "red") return { cls: "srv-hint-down", title: "⚠️ Ο server δεν απαντά" };
 		if (hs === "waking" || hs === "off") return { cls: "srv-hint-wait", title: "ξυπνάει… περίμενε" };
 		if (st === "training" || st === "training_family" || st === "preparing_training" || st === "queued")
@@ -934,7 +980,15 @@
 			if (online() && !wasGreen) { refreshMe(); kick(); pollStatus(); pollPredictions(); }
 			wasGreen = online();
 		}, 1000);
-		window.addEventListener("online", function () { markDown(); });
+		window.addEventListener("online", function () { if (!quiet()) markDown(); });
+		document.addEventListener("visibilitychange", function () {
+			if (tabHidden()) { applyQuiet(); return; }
+			lastActivity = Date.now();
+			resumeFromQuiet();
+		});
+		document.addEventListener("pointerdown", noteActivity, true);
+		document.addEventListener("keydown", noteActivity, true);
+		document.addEventListener("click", noteActivity, true);
 	}
 
 	window.AnnoServer = {
@@ -942,7 +996,22 @@
 		login: login,
 		state: function () { return { health: health.state, family: current.family, project: current.project, queue: readQueue().length, uploads: wantFirst.length + wantLater.length, user: session.user }; },
 		_vroot: vroot,
-		_process: processLive
+		_process: processLive,
+		_idle: {
+			ms: IDLE_MS,
+			quiet: quiet,
+			noteActivity: noteActivity,
+			applyQuiet: applyQuiet,
+			resume: resumeFromQuiet,
+			lastActivity: function (t) { if (arguments.length) lastActivity = t; return lastActivity; },
+			isOn: function () { return quietOn; },
+			pollStatus: pollStatus,
+			maybePredict: maybePredict,
+			pollPredictions: pollPredictions,
+			refreshMe: refreshMe,
+			checkHealth: checkHealth,
+			maybeWake: maybeWake
+		}
 	};
 
 	if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
