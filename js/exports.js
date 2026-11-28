@@ -165,8 +165,8 @@ function downloadAnnotations() {
     }), allAnnotations.project.replace(/ /g,'_').replace(/---|--/g,'-') + "-" + allAnnotations.Annotator + "-" + timestamp() + ".json");
 }
 
-function imagesForCluster(name) {
-    var prefix = name + "/", images = allAnnotations.images || {}, out = {}, key, copy, bare, allowed = null, i;
+function imagesForCluster(name, fromImages) {
+    var prefix = name + "/", images = fromImages || (allAnnotations.images || {}), out = {}, key, copy, bare, allowed = null, i;
     if (typeof clusterGroups !== "undefined" && clusterGroups && clusterGroups[name] && clusterGroups[name].keys) {
         allowed = {};
         for (i = 0; i < clusterGroups[name].keys.length; i++) allowed[clusterGroups[name].keys[i]] = 1;
@@ -199,11 +199,11 @@ function exportBase(cluster, stamp) {
     return proj + "-" + who + "-" + stamp;
 }
 
-function saveClusterJson(name, stamp) {
+function saveClusterJson(name, stamp, images) {
     var payload = JSON.parse(JSON.stringify(allAnnotations));
     stripLiveMeta(payload);
     payload.project = name;
-    payload.images = imagesForCluster(name);
+    payload.images = images || imagesForCluster(name);
     if (mergeOnExportEnabled()) payload.images = imagesForDelivery(payload.images);
     stripLockFlags(payload.images);
     payload.prefs = JSON.parse(JSON.stringify(prefs));
@@ -211,9 +211,9 @@ function saveClusterJson(name, stamp) {
     saveAs(new Blob([JSON.stringify(payload)], { type: "application/json" }), exportBase(name, stamp) + ".json");
 }
 
-function saveClusterCsv(name, stamp) {
+function saveClusterCsv(name, stamp, images) {
     var saved = allAnnotations.images;
-    var images = imagesForCluster(name);
+    images = images || imagesForCluster(name);
     if (mergeOnExportEnabled()) images = imagesForDelivery(images);
     allAnnotations.images = images;
     var output;
@@ -236,6 +236,125 @@ function downloadOpenedClusters(withJson) {
     if (withJson) saveClusterJson(name, stamp);
     saveClusterCsv(name, stamp);
 }
+
+function annotationStoreKey(name) {
+    return "annotool.annotations:" + name;
+}
+
+function readStoredAnnotations(name) {
+    var raw, snap;
+    if (!name) return null;
+    try {
+        raw = localStorage.getItem(annotationStoreKey(name));
+        if (!raw) return null;
+        snap = JSON.parse(raw);
+    } catch (e) { return null; }
+    return (snap && typeof snap === "object") ? snap : null;
+}
+
+function rememberCurrentAnnotations() {
+    var name = (typeof activeCluster !== "undefined" && activeCluster) || (allAnnotations && allAnnotations.project) || "";
+    if (!name || typeof allAnnotations === "undefined" || !allAnnotations) return;
+    try {
+        localStorage.setItem(annotationStoreKey(name), JSON.stringify({
+            images: allAnnotations.images || {},
+            currentImage: allAnnotations.currentImage || "",
+            imageNum: allAnnotations.imageNum || 0,
+            presets: allAnnotations.presets || null
+        }));
+    } catch (e) {}
+}
+
+function hasFolderPrefixes(images) {
+    var key;
+    images = images || {};
+    for (key in images) {
+        if (Object.prototype.hasOwnProperty.call(images, key) && String(key).indexOf("/") !== -1) return true;
+    }
+    return false;
+}
+
+function boxedImages(images) {
+    var out = {}, key, copy, bare;
+    images = images || {};
+    for (key in images) {
+        if (!Object.prototype.hasOwnProperty.call(images, key) || !images[key] || !images[key].annotations || !images[key].annotations.length) continue;
+        bare = String(images[key].imageName || key).split("/").pop();
+        copy = JSON.parse(JSON.stringify(images[key]));
+        copy.imageName = bare;
+        out[bare] = copy;
+    }
+    return out;
+}
+
+function imagesOfCluster(name) {
+    var currentName = (typeof activeCluster !== "undefined" && activeCluster) || (allAnnotations && allAnnotations.project) || "";
+    var live = (allAnnotations && allAnnotations.images) || {};
+    var out, snap;
+    if (name && name === currentName) {
+        out = imagesForCluster(name, live);
+        if (Object.keys(out).length) return out;
+        if (!hasFolderPrefixes(live)) return boxedImages(live);
+    }
+    snap = readStoredAnnotations(name);
+    if (snap && snap.images) {
+        out = imagesForCluster(name, snap.images);
+        if (Object.keys(out).length) return out;
+        if (!hasFolderPrefixes(snap.images)) return boxedImages(snap.images);
+    }
+    if (name !== currentName) {
+        out = imagesForCluster(name, live);
+        if (Object.keys(out).length) return out;
+    }
+    return {};
+}
+
+function workedClusterNames() {
+    var names = [], i, name, images;
+    if (typeof clusterOrder !== "undefined" && clusterOrder && clusterOrder.length) {
+        for (i = 0; i < clusterOrder.length; i++) {
+            name = clusterOrder[i];
+            if (Object.keys(imagesOfCluster(name)).length) names.push(name);
+        }
+        return names;
+    }
+    name = (allAnnotations && allAnnotations.project) || "";
+    images = imagesOfCluster(name);
+    if (!Object.keys(images).length && allAnnotations && allAnnotations.images) images = boxedImages(allAnnotations.images);
+    return Object.keys(images).length ? [name || "project"] : [];
+}
+
+function downloadWorkedClusters() {
+    if (0 < nullAnnoFlag) {
+        return new Noty({ type: "error", theme: "mint", layout: "topRight", text: "έχεις NULL", timeout: 1000, closeWith: ["click", "button"] }).show();
+    }
+    if ("" == $("#AnnotatorName").html()) { alert("please enter annotator name !"); return !1; }
+    var btn = document.getElementById("exportWorkedBtn");
+    if (btn) btn.blur();
+    if (typeof storeAnnotationImg === "function") storeAnnotationImg();
+    rememberCurrentAnnotations();
+    var names = workedClusterNames();
+    if (!names.length) {
+        new Noty({ type: "warning", theme: "mint", layout: "topRight", text: "δεν υπάρχουν φάκελοι με annotation", timeout: 1600 }).show();
+        return;
+    }
+    var stamp = timestamp();
+    var i = 0;
+    function next() {
+        var name, images;
+        if (i >= names.length) {
+            new Noty({ type: "success", theme: "mint", layout: "topRight", text: "κατέβηκαν " + names.length + " φάκελοι (json + video.csv)", timeout: 2000 }).show();
+            return;
+        }
+        name = names[i++];
+        images = imagesOfCluster(name);
+        saveClusterJson(name, stamp, images);
+        saveClusterCsv(name, stamp, images);
+        setTimeout(next, 400);
+    }
+    next();
+}
+
 
 function commonExportData(){
 	var projArr=allAnnotations.project.split("_"),

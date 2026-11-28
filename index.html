@@ -22,7 +22,7 @@
 	<link rel="stylesheet" href="css/webannotool.min.css?v=3" rel="stylesheet">
 	<link rel="stylesheet" href="css/livehud.css?v=18">
 	<link rel="stylesheet" href="css/video.css" id="workspace-css">
-	<link rel="stylesheet" href="css/modern.css?v=36">
+	<link rel="stylesheet" href="css/modern.css?v=39">
 <link rel="stylesheet" href="css/server.css?v=6">
 	
 
@@ -80,9 +80,9 @@
 			</label>
 			<div id="generationButtons" class="btn-group" role="group">
 				<button id="downloadAnn" type="button" class="btn btn-success btn-sm shadow" onclick="downloadAnnotations();">json</button>
-				<button id="exportAllBtn" type="button" class="btn btn-success btn-sm shadow" title="ένα json και ένα video.csv για κάθε φάκελο (cluster) του αγώνα, από όσα έχει ο trainer. Χρειάζεται «Ζωντανά» συνδεδεμένο και τον trainer ανοιχτό." onclick="if(window.AnnoSync&amp;&amp;AnnoSync.exportAll)AnnoSync.exportAll();">json όλων</button>
 				<button id="generatePhotoCSV" type="button" class="btn btn-success btn-sm shadow" onclick="generatePhotoCSV();">photos.csv</button>
 				<button id="generateVideoCSV" type="button" class="btn btn-success btn-sm shadow" onclick="generateVideoCSV();">video.csv</button>
+				<button id="exportWorkedBtn" type="button" class="btn btn-success btn-sm shadow" title="ένα json και ένα video.csv για κάθε φάκελο που έχει annotation, ίδια μορφή με τα μονά κουμπιά. Δεν χρειάζεται τον trainer." onclick="downloadWorkedClusters();">json+csv</button>
 				<button id="generateNewsCSV" type="button" class="btn btn-success btn-sm shadow" onclick="generateNewsCSV_3();">news.csv</button>
 			</div> 
 		</div>
@@ -261,6 +261,7 @@
 					</button>
 					<button type="button" id="locReplaceOpen" class="btn btn-primary btn-md" title="άλλαξε ένα location στα annotations">Αλλαγή</button>
 					<button type="button" id="locSticky" class="btn btn-primary btn-md" title="έρχεται στην επόμενη εικόνα. Πάτα για να μην έρχεται">Μένει</button>
+					<button type="button" id="annoEnter" title="καταχώρηση brand + location (Enter)">Enter</button>
 				</div>
 				<div>
 					<input id="tpointsearch" type="text" class="form-control input-sm" title="" placeholder="tpoint search"> 
@@ -274,9 +275,6 @@
 						<i class="fa fa-floppy-o "><span>save to txt</span></i>
 					</button>
 				</div>
-				<select id="hits" name="hits" size="3">
-					<option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option>
-				</select>
 			</div>
 		</div>
 		
@@ -412,10 +410,10 @@
 	<script type="text/javascript" src="js/libs/mousetrap/mousetrap.js"></script>
 	<script type="text/javascript" src="js/libs/mousetrap/mousetrap-pause.js"></script>
     <script type="text/javascript" src="js/libs/mousetrap/mousetrap-bind-dictionary.min.js"></script>	
-	<script type="text/javascript" src="js/webannotool.js?v=39"></script>
-	<script type="text/javascript" src="js/keyboard.js?v=11"></script>
+	<script type="text/javascript" src="js/webannotool.js?v=41"></script>
+	<script type="text/javascript" src="js/keyboard.js?v=12"></script>
 	<script type="text/javascript" src="js/imports.js?v=14"></script>
-	<script type="text/javascript" src="js/exports.js?v=11"></script>
+	<script type="text/javascript" src="js/exports.js?v=12"></script>
 	<script type="text/javascript" src="js/filters.js?v=5"></script>
 	<script type="text/javascript" src="js/tools.js?v=9"></script>
 	<script type="text/javascript" src="js/mydatatables.js"></script>
@@ -452,11 +450,11 @@
 	</div>
 
 	<script type="text/javascript" src="js/compare.js"></script>
-	<script type="text/javascript" src="js/livehud.js?v=25"></script>
-	<script type="text/javascript" src="js/suggest.js?v=16"></script>
-	<script type="text/javascript" src="js/serversync.js?v=9"></script>
+	<script type="text/javascript" src="js/livehud.js?v=26"></script>
+	<script type="text/javascript" src="js/suggest.js?v=18"></script>
+	<script type="text/javascript" src="js/serversync.js?v=10"></script>
 	<script type="text/javascript" src="js/livesync.js?v=26"></script>
-	<script type="text/javascript" src="js/anno.js?v=3"></script>
+	<script type="text/javascript" src="js/anno.js?v=4"></script>
 	<script>
 	(function () {
 		var root = document.documentElement;

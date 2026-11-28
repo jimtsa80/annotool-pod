@@ -560,32 +560,50 @@
 	var lastPred = { n: 0, version: null, at: 0 }, predWait = false;
 	var noPredToastAt = 0, inNoPredRegion = false, frameToastTimer = null, predParsed = { text: null, doc: null };
 	function mapStatus(s) {
-		var raw = s.state, nt = s.next_training || {}, doc;
+		var raw = s && s.state, nt = (s && s.next_training) || {}, doc;
 		var state = raw;
 		if (raw === "queued") state = "αναμονή εκπαίδευσης" + (s.queue_position ? " #" + s.queue_position : "");
 		else if (raw === "preparing_training") state = "ετοιμάζεται νέα εκπαίδευση";
 		else if (raw === "cancelling") state = "σταματάει…";
-		else if (raw === "predicting") state = "προβλέψεις στον server…";
+		/* keep "predicting" so livesync #liveWait (same as local) can show; predWait covers the gap before the server flips */
+		else if (raw === "predicting" || (predWait && (raw === "idle" || raw === "ready" || !raw))) state = "predicting";
 		doc = {
-			schema: 1, state: state, project: current.project || null, cycle: s.cycle, epoch: s.epoch, epochs: s.epochs,
-			last_map50: s.last_map50, per_class_map50: s.per_class_map50 || {}, updated_at: new Date().toISOString(),
-			message: s.message || "", last_error: s.last_error || null, model_family: s.family, model_mode: "server",
-			classes: Object.keys(s.per_class_map50 || {}).length || null
+			schema: 1, state: state, project: current.project || null, cycle: s && s.cycle, epoch: s && s.epoch, epochs: s && s.epochs,
+			last_map50: s && s.last_map50, per_class_map50: (s && s.per_class_map50) || {}, updated_at: new Date().toISOString(),
+			message: (s && s.message) || "", last_error: (s && s.last_error) || null, model_family: (s && s.family) || current.family || null, model_mode: "server",
+			classes: Object.keys((s && s.per_class_map50) || {}).length || null
 		};
 		if (raw === "idle" && nt.kind === "incremental" && nt.cadence) { doc.reviewed_since_last_cycle = nt.changed_box_frames || 0; doc.threshold = nt.cadence; }
 		return doc;
+	}
+	function pushStatus(s) {
+		if (putFile(STATUS_FILE, JSON.stringify(mapStatus(s || lastStatus || { state: predWait ? "predicting" : "idle" }))) && window.AnnoSync && AnnoSync.pollNow) AnnoSync.pollNow();
+	}
+	function endPredWait() {
+		if (!predWait) return;
+		predWait = false;
+		var s = lastStatus, copy, k;
+		if (s && s.state === "predicting") {
+			copy = {};
+			for (k in s) if (Object.prototype.hasOwnProperty.call(s, k)) copy[k] = s[k];
+			copy.state = "idle";
+			s = copy;
+		}
+		pushStatus(s);
+		paintPanel();
 	}
 	function pollStatus() {
 		if (!online() || !current.family) return;
 		api("GET", famPath() + "/status").then(function (s) {
 			lastStatus = s;
-			putFile(STATUS_FILE, JSON.stringify(mapStatus(s)));
-			var st = s.state === "training" ? "training" : (s.state === "queued" ? "queued" : (s.state === "preparing_training" ? "preparing" : s.state));
-			TrainUi.update({ state: st, epoch: s.epoch, epochs: s.epochs, version: s.model_version, canStop: s.can_stop, queuePos: s.queue_position },
-				function () { return api("POST", famPath() + "/stop").then(function (r) { toast("εκπαίδευση: " + (r.result === "cancelling" ? "σταματάει" : r.result)); pollStatus(); }); });
 			if (s.state === "predicting") predWait = true;
 			if (lastModelVersion != null && s.model_version !== lastModelVersion) { predWait = true; pollPredictions(); }
 			lastModelVersion = s.model_version;
+			pushStatus(s);
+			var st = s.state === "training" ? "training" : (s.state === "queued" ? "queued" : (s.state === "preparing_training" ? "preparing" : s.state));
+			TrainUi.update({ state: st, epoch: s.epoch, epochs: s.epochs, version: s.model_version, canStop: s.can_stop, queuePos: s.queue_position },
+				function () { return api("POST", famPath() + "/stop").then(function (r) { toast("εκπαίδευση: " + (r.result === "cancelling" ? "σταματάει" : r.result)); pollStatus(); }); });
+			if (s.state === "error") endPredWait();
 			paintPanel();
 		}, function () {});
 	}
@@ -598,8 +616,9 @@
 		lastPredictAt = Date.now();
 		lastPredictCur = cur;
 		predWait = true;
+		pushStatus(lastStatus);
 		paintPanel();
-		api("POST", projPath() + "/predict", { current: cur }).catch(function () {});
+		api("POST", projPath() + "/predict", { current: cur }).catch(function () { endPredWait(); });
 	}
 	function pollPredictions() {
 		if (!online() || !current.project) return;
@@ -612,9 +631,14 @@
 			doc.images = out;
 			lastPred = { n: n, version: doc.modelVersion || doc.model_version || lastModelVersion, at: Date.now() };
 			predWait = false;
+			pushStatus(lastStatus);
 			if (putFile(PRED_FILE, JSON.stringify(doc)) && window.AnnoSync && AnnoSync.pollNow) AnnoSync.pollNow();
 			paintPanel();
-		}, function () { paintPanel(); });
+		}, function (err) {
+			/* keep waiting on blips; hide the bar on real predict failures */
+			if (err && !err.network && err.status && err.status !== 404) endPredWait();
+			else paintPanel();
+		});
 	}
 
 	/* ------------------------------------------------------------------ export through the server */

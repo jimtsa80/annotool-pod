@@ -224,11 +224,6 @@ $("#tpointsearchclear").click(function(){
     $("#tpointsearch").val('');
 	$('#tpoints li').removeClass('offsearch'); //first clear prev search
 });
-$( "#hits" ).change(function() {
-	$('input#tpointsearch, input#brandsearch').val("")
-	$('#brands li, #tpoints li').removeClass('offsearch');
-})
-
 var currentMousePos = { x: -1, y: -1 };
 $(document).mousemove(function(event) {
 	currentMousePos.x = event.pageX;
@@ -237,108 +232,62 @@ $(document).mousemove(function(event) {
 	
 $(window).bind('mousewheel', function(e){
 	if (window.presetGrab) return;
-	if (window.AnnoSuggest && AnnoSuggest.liveHits && AnnoSuggest.liveHits() &&
-		$('#box').position().left < currentMousePos.x &&
-		currentMousePos.x < $('#box').position().left + $('#box').width() &&
-		currentMousePos.y > $('#box').position().top &&
-		currentMousePos.y < $('#box').position().top + $('#box').height() &&
-		!e.ctrlKey) {
-		e.preventDefault();
-		var dir = e.originalEvent.wheelDelta > 0 ? 1 : -1;
-		AnnoSuggest.setHits(AnnoSuggest.liveHits() + dir);
-		return;
-	}
 	if ( 1 == highlighted.length 
 		&& $('#box').position().left < currentMousePos.x
 		&& currentMousePos.x < $('#box').position().left + $('#box').width()
 		&& currentMousePos.y > $('#box').position().top
 		&& currentMousePos.y < $('#box').position().top + $('#box').height()
 		&& !e.ctrlKey
+		&& isKeyPressed(e)==1
 	) {
-		//HITS
 		e.preventDefault();
-		if ( isKeyPressed(e)==0 ) {
-			if (e.originalEvent.wheelDelta > 0 && document.getElementById("hits").value < 15) {
-				a = highlighted;
-				var b = typeof resolveBrandConn === "function" ? resolveBrandConn() : $("#brands ul li.brand.selected").attr('id'),
-					c = typeof resolveTpoint === "function" ? resolveTpoint() : tpointText(),
-					d = $("#hits").val();
-				if ("" == d) return alert("Please select again the hits number."), document.getElementById("hits").selectedIndex = -1, !1;
-				if ("" != b && "" != c) {
-					for ( var e = 0, g = a.length; e < g; e++ ){ 
-						var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
-						a[e].annotation.group = b.split("__")[0];
-						a[e].annotation.brand = b.split("__")[1];
-						a[e].annotation.tpoint = c;
-						a[e].annotation.hits = parseInt(d, 10)+1;
-						if (wasEmpty) nullAnnoFlag--;
-					}
-				}
-				$('#hits').val( parseInt(d, 10)+1 );
-			}
-			else if(e.originalEvent.wheelDelta < 0 && document.getElementById("hits").value > 1 ) {
-				a = highlighted;
-				var b = typeof resolveBrandConn === "function" ? resolveBrandConn() : $("#brands ul li.brand.selected").attr('id'),
-					c = typeof resolveTpoint === "function" ? resolveTpoint() : tpointText(),
-					d = document.getElementById("hits").value;
-				if ("" == d) return alert("Please select again the hits number."), document.getElementById("hits").selectedIndex = -1, !1;
-				if ("" != b && "" != c) {
-					for ( var e = 0, g = a.length; e < g; e++ ){ 
-						var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
-						a[e].annotation.group = b.split("__")[0];
-						a[e].annotation.brand = b.split("__")[1];
-						a[e].annotation.tpoint = c;
-						a[e].annotation.hits = parseInt(d, 10)-1;
-						if (wasEmpty) nullAnnoFlag--;
-					}
-				}
-				$('#hits').val(parseInt(d, 10)-1);
-			}
+		function polyHits(poly, brand, tpoint) {
+			var h = parseInt(poly && poly.annotation && poly.annotation.hits, 10);
+			if (h >= 1) return h;
+			if (typeof autoAnnoHits === "function") return autoAnnoHits(brand, tpoint);
+			return 1;
 		}
-		else if ( isKeyPressed(e)==1 ) {
-			//TPOINTS
-			if ( e.originalEvent.wheelDelta > 0 ) {
-				a = highlighted;
-				var curconn = $("#brands ul li.selected").attr('id'),
-					cIndex = $("#tpoints .selected").index(),
-					c = tpointText($("#tpoints ul li").eq(cIndex+1)),
-					d = document.getElementById("hits").value;
-				if ("" == d) return alert("Please select again the hits number."), document.getElementById("hits").selectedIndex = -1, !1;
-				if ("" != curconn && "" != c) {
-					for ( var e = 0, g = a.length; e < g; e++ ){ 
-						var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
-						a[e].annotation.group = curconn.split("__")[0];
-						a[e].annotation.brand = curconn.split("__")[1];
-						a[e].annotation.tpoint = c;
-						a[e].annotation.hits = parseInt(d, 10);
-						if (wasEmpty) nullAnnoFlag--;
-					}
+		if ( e.originalEvent.wheelDelta > 0 ) {
+			a = highlighted;
+			var curconn = $("#brands ul li.selected").attr('id'),
+				cIndex = $("#tpoints .selected").index(),
+				c = tpointText($("#tpoints ul li").eq(cIndex+1));
+			if ("" != curconn && "" != c) {
+				for ( var ei = 0, g = a.length; ei < g; ei++ ){
+					if (typeof boxIsLocked === "function" && boxIsLocked(a[ei])) continue;
+					var wasEmpty = !a[ei].annotation.brand || !a[ei].annotation.tpoint;
+					var brand = curconn.split("__")[1];
+					a[ei].annotation.group = curconn.split("__")[0];
+					a[ei].annotation.brand = brand;
+					a[ei].annotation.tpoint = c;
+					a[ei].annotation.hits = polyHits(a[ei], brand, c);
+					if (wasEmpty) nullAnnoFlag--;
 				}
-				if ( cIndex+1 < $("#tpoints ul li").length ) {	$("#tpoints ul li").eq(cIndex+1).addClass('selected')}
-				else {	$("#tpoints ul li").eq(0).addClass('selected')	}
-				$("#tpoints ul li").eq(cIndex).removeClass('selected')
 			}
-			else if( e.originalEvent.wheelDelta < 0 ) {
-				a = highlighted;
-				var b = $("#brands ul li.selected").attr('id'),
-					cIndex = $("#tpoints .selected").index(),
-					c = tpointText($("#tpoints ul li").eq(cIndex-1)),
-					d = document.getElementById("hits").value;
-				if ("" == d) return alert("Please select again the hits number."), document.getElementById("hits").selectedIndex = -1, !1;
-				if ("" != b && "" != c) {
-					for ( e = 0; e < a.length; e++ ){ 
-						var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
-						a[e].annotation.group = b.split("__")[0];
-						a[e].annotation.brand = b.split("__")[1];
-						a[e].annotation.tpoint = c;
-						a[e].annotation.hits = parseInt(d, 10);
-						if (wasEmpty) nullAnnoFlag--;
-					}
+			if ( cIndex+1 < $("#tpoints ul li").length ) {	$("#tpoints ul li").eq(cIndex+1).addClass('selected')}
+			else {	$("#tpoints ul li").eq(0).addClass('selected')	}
+			$("#tpoints ul li").eq(cIndex).removeClass('selected')
+		}
+		else if( e.originalEvent.wheelDelta < 0 ) {
+			a = highlighted;
+			var b = $("#brands ul li.selected").attr('id'),
+				cIndex = $("#tpoints .selected").index(),
+				c = tpointText($("#tpoints ul li").eq(cIndex-1));
+			if ("" != b && "" != c) {
+				for ( var ej = 0; ej < a.length; ej++ ){
+					if (typeof boxIsLocked === "function" && boxIsLocked(a[ej])) continue;
+					var wasEmpty2 = !a[ej].annotation.brand || !a[ej].annotation.tpoint;
+					var brand2 = b.split("__")[1];
+					a[ej].annotation.group = b.split("__")[0];
+					a[ej].annotation.brand = brand2;
+					a[ej].annotation.tpoint = c;
+					a[ej].annotation.hits = polyHits(a[ej], brand2, c);
+					if (wasEmpty2) nullAnnoFlag--;
 				}
-				if ( cIndex > 0 ) {	$("#tpoints ul li").eq(cIndex-1).addClass('selected')}
-				else {	$("#tpoints ul li").eq( $("#tpoints ul li").length-1 ).addClass('selected')	}
-				$("#tpoints ul li").eq(cIndex).removeClass('selected')
 			}
+			if ( cIndex > 0 ) {	$("#tpoints ul li").eq(cIndex-1).addClass('selected')}
+			else {	$("#tpoints ul li").eq( $("#tpoints ul li").length-1 ).addClass('selected')	}
+			$("#tpoints ul li").eq(cIndex).removeClass('selected')
 		}
 	}
 	if ( e.ctrlKey && highlighted.length>0 ) {	//	resize blocks

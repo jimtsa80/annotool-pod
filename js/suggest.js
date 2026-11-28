@@ -225,31 +225,16 @@
 		}
 	}
 
-	var hitsSync = false;
-
 	function chosenHits(fallback) {
-		var hitsBox = document.getElementById("hits");
-		var h = hitsBox ? parseInt(hitsBox.value, 10) : 0;
-		if (h >= 1 && h <= 15) return h;
-		h = parseInt(fallback, 10);
+		var h = parseInt(fallback, 10);
 		return h >= 1 ? h : 1;
-	}
-
-	function showHits(h) {
-		var hitsBox = document.getElementById("hits");
-		if (!hitsBox || !(h >= 1)) return;
-		if (String(hitsBox.value) === String(h)) return;
-		hitsSync = true;
-		hitsBox.value = String(h);
-		hitsSync = false;
 	}
 
 	function showChip() {
 		var el = chip();
 		if (!el || !pending) return;
-		el.textContent = pending.brand + " · " + pending.tpoint + " · " + pending.hits + " hits · άλλαξε hits, Enter";
+		el.textContent = pending.brand + " · " + pending.tpoint + " · Enter";
 		el.className = "on";
-		showHits(pending.hits);
 		placeChip();
 	}
 
@@ -493,7 +478,13 @@
 	function shownLocs() {
 		var rows = freqLocs(quick.group, quick.brand).filter(function (r) { return matches(r.tpoint); });
 		var used = rows.filter(function (r) { return r.n > 0; });
-		return (typed ? rows : (used.length ? used : rows)).slice(0, 8);
+		rows = (typed ? rows : (used.length ? used : rows)).slice(0, 8);
+		if (quick && quick.tpoint && matches(quick.tpoint)) {
+			var i, found = false;
+			for (i = 0; i < rows.length; i++) if (rows[i].tpoint === quick.tpoint) { found = true; break; }
+			if (!found) rows.unshift({ tpoint: quick.tpoint, n: 0 });
+		}
+		return rows;
 	}
 
 	function qpButton(label, attrs, cls) {
@@ -533,18 +524,16 @@
 			var locs = shownLocs();
 			for (i = 0; i < locs.length; i++) {
 				var on = locs[i].tpoint === quick.tpoint;
-				el.appendChild(qpButton(locs[i].tpoint, { "data-act": "loc", "data-loc": locs[i].tpoint }, on ? "qp-item on" : "qp-item"));
-			}
-			if (quick.tpoint) {
-				var row = document.createElement("div");
-				row.className = "qp-hits";
-				row.appendChild(qpButton("−", { "data-act": "hit", "data-dir": "-1" }, "qp-mini"));
-				var num = document.createElement("span");
-				num.textContent = quick.hits + " hits";
-				row.appendChild(num);
-				row.appendChild(qpButton("+", { "data-act": "hit", "data-dir": "1" }, "qp-mini"));
-				row.appendChild(qpButton("Enter", { "data-act": "ok" }, "qp-ok"));
-				el.appendChild(row);
+				var locBtn = qpButton(locs[i].tpoint, { "data-act": "loc", "data-loc": locs[i].tpoint }, on ? "qp-item on" : "qp-item");
+				if (on) {
+					var row = document.createElement("div");
+					row.className = "qp-enter-row";
+					row.appendChild(locBtn);
+					row.appendChild(qpButton("Enter", { "data-act": "ok" }, "qp-ok"));
+					el.appendChild(row);
+				} else {
+					el.appendChild(locBtn);
+				}
 			}
 		}
 		placeQuick();
@@ -573,7 +562,7 @@
 	}
 
 	function openQuick(poly) {
-		quick = { poly: poly, step: "brand", group: "", brand: "", tpoint: "", hits: 1 };
+		quick = { poly: poly, step: "brand", group: "", brand: "", tpoint: "", hits: 1, editing: false };
 		typed = "";
 		var rows = freqBrands();
 		if (rows.length === 1) {
@@ -584,6 +573,32 @@
 				quick.hits = usualHits(rows[0].brand, locs[0].tpoint);
 			}
 		}
+		renderQuick();
+	}
+
+	function edit(poly) {
+		if (!poly || !poly.annotation) return;
+		if (typeof boxIsLocked === "function" && boxIsLocked(poly)) return;
+		var brand = (poly.annotation.brand || "").trim();
+		var tpoint = (poly.annotation.tpoint || "").trim();
+		if (!brand || !tpoint) {
+			if (!brand && !tpoint) openQuick(poly);
+			return;
+		}
+		clearPending();
+		var known = resolve(brand, tpoint);
+		var group = (known && known.group) || poly.annotation.group || "";
+		var keepHits = parseInt(poly.annotation.hits, 10);
+		quick = {
+			poly: poly,
+			step: "loc",
+			group: group,
+			brand: brand,
+			tpoint: tpoint,
+			hits: keepHits >= 1 ? keepHits : usualHits(brand, tpoint),
+			editing: true
+		};
+		typed = "";
 		renderQuick();
 	}
 
@@ -601,13 +616,19 @@
 	function commitQuick() {
 		if (!quick || !quick.poly || !quick.poly.annotation || !quick.brand || !quick.tpoint) return;
 		var poly = quick.poly;
+		if (typeof boxIsLocked === "function" && boxIsLocked(poly)) {
+			closeQuick();
+			clearPending();
+			return;
+		}
 		var wasEmpty = !poly.annotation.brand || !poly.annotation.tpoint;
+		var same = (poly.annotation.brand || "") === quick.brand && (poly.annotation.tpoint || "") === quick.tpoint;
+		var keepHits = parseInt(poly.annotation.hits, 10);
 		poly.annotation.group = quick.group;
 		poly.annotation.brand = quick.brand;
 		poly.annotation.tpoint = quick.tpoint;
-		poly.annotation.hits = quick.hits || 1;
-		var hitsBox = document.getElementById("hits");
-		if (hitsBox) hitsBox.value = String(poly.annotation.hits);
+		if (same && keepHits >= 1) poly.annotation.hits = keepHits;
+		else poly.annotation.hits = quick.hits || usualHits(quick.brand, quick.tpoint) || 1;
 		if (!poly.annotation.timestamp) poly.annotation.timestamp = new Date().toISOString();
 		if (wasEmpty && typeof nullAnnoFlag !== "undefined") nullAnnoFlag--;
 		selectCombo(quick.group, quick.brand, quick.tpoint);
@@ -635,12 +656,6 @@
 			quick.tpoint = btn.getAttribute("data-loc") || "";
 			quick.hits = usualHits(quick.brand, quick.tpoint);
 			typed = "";
-			renderQuick();
-		} else if (act === "hit") {
-			var next = (quick.hits || 1) + (parseInt(btn.getAttribute("data-dir"), 10) || 0);
-			if (next < 1) next = 1;
-			if (next > 15) next = 15;
-			quick.hits = next;
 			renderQuick();
 		} else if (act === "ok") commitQuick();
 	}
@@ -696,7 +711,6 @@
 		poly.annotation.brand = pending.brand;
 		poly.annotation.tpoint = pending.tpoint;
 		poly.annotation.hits = chosenHits(pending.hits);
-		showHits(poly.annotation.hits);
 		if (!poly.annotation.timestamp) poly.annotation.timestamp = new Date().toISOString();
 		if (wasEmpty && typeof nullAnnoFlag !== "undefined") nullAnnoFlag--;
 		clearPending();
@@ -728,17 +742,6 @@
 			};
 			window.storeAnnotationImg._suggestWrapped = true;
 		}
-		$("#hits").on("change", function () {
-			if (hitsSync) return;
-			var h = parseInt(this.value, 10);
-			if (!(h >= 1)) return;
-			if (quick) quick.hits = h;
-			if (pending) {
-				pending.hits = h;
-				showChip();
-			} else if (quick) renderQuick();
-			learnVisible();
-		});
 		var box = document.getElementById("box");
 		if (box) {
 			box.addEventListener("click", function (e) {
@@ -835,22 +838,13 @@
 		return 0;
 	}
 
-	function setLiveHits(h) {
-		if (!(h >= 1)) h = 1;
-		if (h > 15) h = 15;
-		if (quick) quick.hits = h;
-		if (pending) pending.hits = h;
-		showHits(h);
-		if (pending) showChip();
-		else if (quick) renderQuick();
-	}
-
 	window.AnnoSuggest = {
 		offer: offer,
+		edit: edit,
 		accept: accept,
 		renameLocation: renameLocation,
+		autoHits: usualHits,
 		liveHits: liveHits,
-		setHits: setLiveHits,
 		clear: function () {
 			clearPending();
 			closeQuick();

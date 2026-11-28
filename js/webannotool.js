@@ -110,30 +110,66 @@ if (workspaceInput) workspaceInput.addEventListener("change", function(a) {
     "video" == a ? b = "css/video.css" : b = "css/photo.css" ;
     document.getElementById("workspace-css").setAttribute("href", b)
 });
-$( "#hits" ).change(function(a) {
-    a = highlighted;
-    var b = resolveBrandConn(),   c = resolveTpoint(),   d = $("#hits").val();
-    if ("" == d) return alert("Please select again the hits number."), document.getElementById("hits").selectedIndex = -1, !1;
-    if ( b !== "" && c !== "" ) {
-		if( a.length==0 ){
-			new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'δεν έχεις επιλέξει τετράγωνο',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
-		}	
-		if(a.length>1){
-			new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'έχεις επιλέξει περισσότερα από ένα τετράγωνα',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
-		}
-        for (var e = 0, g = a.length; e < g; e++){ 
-		var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
-		a[e].annotation.group = b.split("__")[0];
-		a[e].annotation.brand = b.split("__")[1];
-		a[e].annotation.tpoint = c;
-		a[e].annotation.hits = parseInt(d, 10);
-		if (wasEmpty) nullAnnoFlag--;
-        dehighlightAllObj()
-		}
-    }else{
-		new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: soleBrandConn() ? 'δεν βρέθηκε location για αυτό το brand' : 'δεν έχεις επιλέξει touchpoint',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+function autoAnnoHits(brand, tpoint) {
+	if (window.AnnoSuggest && typeof AnnoSuggest.autoHits === "function") {
+		var h = AnnoSuggest.autoHits(brand, tpoint);
+		if (h >= 1) return h;
 	}
-    resetAfterHitsApplied();
+	return 1;
+}
+
+function applySelectedBrandLocation() {
+	var a = highlighted;
+	var b = resolveBrandConn(), c = resolveTpoint();
+	if (b === "" || c === "") {
+		new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: soleBrandConn() ? 'δεν βρέθηκε location για αυτό το brand' : 'δεν έχεις επιλέξει touchpoint',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+		return false;
+	}
+	if (!a || a.length === 0) {
+		new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'δεν έχεις επιλέξει τετράγωνο',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+		return false;
+	}
+	if (a.length > 1) {
+		new Noty({ type: 'error', theme: 'mint', layout: 'topRight',  text: 'έχεις επιλέξει περισσότερα από ένα τετράγωνα',  timeout: 1000,  closeWith: ['click', 'button'],}).show();
+		return false;
+	}
+	if (boxIsLocked(a[0])) return false;
+	var group = b.split("__")[0], brand = b.split("__")[1], e = 0;
+	for (e = 0; e < a.length; e++) {
+		var wasEmpty = !a[e].annotation.brand || !a[e].annotation.tpoint;
+		var same = (a[e].annotation.brand || "") === brand && (a[e].annotation.tpoint || "") === c;
+		var keepHits = parseInt(a[e].annotation.hits, 10);
+		a[e].annotation.group = group;
+		a[e].annotation.brand = brand;
+		a[e].annotation.tpoint = c;
+		a[e].annotation.hits = (same && keepHits >= 1) ? keepHits : autoAnnoHits(brand, c);
+		if (wasEmpty) nullAnnoFlag--;
+		dehighlightAllObj();
+	}
+	if (typeof brd !== "undefined" && brd) brd.update();
+	if (window.AnnoLive && AnnoLive.refresh) AnnoLive.refresh();
+	resetAfterHitsApplied();
+	return true;
+}
+
+document.addEventListener("keydown", function (ev) {
+	if (!(ev.key === "Enter" || ev.keyCode === 13)) return;
+	var t = ev.target;
+	if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+	if (t && t.classList && t.classList.contains("editable")) return;
+	if (t && (t.id === "newbrand" || t.id === "newtpoint" || t.id === "annoAsk" || t.id === "locReplaceYes")) return;
+	if (document.getElementById("quickPick") && document.getElementById("quickPick").className.indexOf("on") !== -1) return;
+	if (document.getElementById("suggestChip") && document.getElementById("suggestChip").className.indexOf("on") !== -1) return;
+	if (!highlighted || !highlighted.length) return;
+	if (!resolveBrandConn() || !resolveTpoint()) return;
+	ev.preventDefault();
+	applySelectedBrandLocation();
+}, true);
+$(function () {
+	$("#annoEnter").on("click", function () {
+		applySelectedBrandLocation();
+		this.blur();
+	});
 });
 	
 document.addEventListener("dragstart", function(a) {
@@ -415,7 +451,6 @@ function brandsInit() {
 				fillTouchpoints( $("#brands li.brand.selected").attr('id') );
 				if (typeof applyTpointOrder === "function") applyTpointOrder();
 				tpointsInit();
-				$("#hits option:selected").prop("selected", false);
 			}
 	})
 	syncSoleBrand();
@@ -484,9 +519,7 @@ function syncSoleBrand() {
 }
 
 function resetAfterHitsApplied() {
-    $("#hits").blur();
     $("#brands ul li").removeClass("selected");
-    document.getElementById("hits").selectedIndex = -1;
     var sole = soleBrandConn();
     if (sole) {
         $("#brands ul li ul li.brand").first().addClass("selected");
@@ -654,7 +687,6 @@ function fillTouchpoints(conn) {
 		$('#tpoints li').length = 0
 	}
 	$("#tpoints li").on("click", function(){
-		document.getElementById("hits").selectedIndex = -1;
 		if (typeof paintStickyMarks === "function") paintStickyMarks();
 	})
 	if (typeof applyTpointOrder === "function") applyTpointOrder();
@@ -837,7 +869,7 @@ activeCluster = "",
                 e.addPoint(v);
                 v.moveTo(a)
             });
-            brd.on("up", function(a) {
+			brd.on("up", function(a) {
                 brd.off("move");
                 brd.suspendUpdate();
                 e.ungroup();
@@ -850,7 +882,8 @@ activeCluster = "",
 						brd.initInfobox(), 
 						brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), 
 						a = c.ancestors[Object.keys(c.ancestors)[0]],
-						a.setAttribute({ size: 8 })
+						a.setAttribute({ size: 8 }),
+						noteBoxTap(c)
 					) : 
 					checkPolyCoords(c) ? removePolygon(c) : ( 
 						brd.removeObject(brd.infobox), 
@@ -908,7 +941,7 @@ activeCluster = "",
                 !z || 8 > A ? (!1 == y && !1 == ctrlPressed && dehighlightAllObj(),
                     highlighted.push(brd, c), brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), a = c.ancestors[Object.keys(c.ancestors)[0]], a.setAttribute({
                         size: 8
-                    })) : checkPolyCoords(c) ? removePolygon(c) : (brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), a = c.ancestors[Object.keys(c.ancestors)[0]], a.setAttribute({
+                    }), noteBoxTap(c)) : checkPolyCoords(c) ? removePolygon(c) : (brd.removeObject(brd.infobox), brd.initInfobox(), brd.updateInfobox(c.ancestors[Object.keys(c.ancestors)[3]]), a = c.ancestors[Object.keys(c.ancestors)[0]], a.setAttribute({
                     size: 8
                 }));
                 brd.unsuspendUpdate()
@@ -1084,7 +1117,7 @@ function boardLimits() {
     if (!(top > 0)) top = 168;
     var maxWidth = window.innerWidth - cols - 52;
     var maxHeight = window.innerHeight - top - 16;
-    var lists = ["brands", "tpoints", "hits"];
+    var lists = ["brands", "tpoints"];
     var i, extra = 0, listTop;
     for (i = 0; i < lists.length; i++) {
         var list = document.getElementById(lists[i]);
@@ -1141,10 +1174,8 @@ function placeBoardImage(url, w, h) {
     brd.resizeContainer(w, h);
     var brands = document.getElementById("brands");
     var points = document.getElementById("tpoints");
-    var hits = document.getElementById("hits");
     if (brands) brands.style.height = h + "px";
     if (points) points.style.height = h + "px";
-    if (hits) hits.style.height = Math.min(h, Math.max(120, h - 80)) + "px";
     brd.setBoundingBox([1, 1, w, h], !1);
     brd.update();
 }
@@ -1878,8 +1909,7 @@ highlighted.push = function(a, b) {
 function updateGUIAnnoInfo(a) {
     var gr = a.annotation.group,
 		br = a.annotation.brand,
-        tp = a.annotation.tpoint,
-		hits = a.annotation.hits;
+        tp = a.annotation.tpoint;
     if ("" == br ){ 
 		$("#brands ul li").removeClass('selected');
 		$("#tpoints ul li").removeClass('selected');
@@ -1892,12 +1922,6 @@ function updateGUIAnnoInfo(a) {
 			brandScrollTo();
 			fillTouchpoints( gr+"__"+br ); 
 			$("#tpoints ul li").filter(function () { return $(this).text() === tp; }).first().addClass("selected")
-			
-			if ( "" == hits ){ 
-				document.getElementById("hits").selectedIndex = -1;
-			}else {
-				document.getElementById("hits").value = hits
-			}
 			tpointsInit();
 		}
 	}
@@ -1906,7 +1930,6 @@ function updateGUIAnnoInfo(a) {
 function resetGUIAnnoInfo() {
     $("#brands ul li").removeClass('selected');
     $("#tpoints ul li").removeClass('selected');
-    document.getElementById("hits").selectedIndex = -1
 	$("#tpoints ul").remove();
 }
 
@@ -2119,6 +2142,20 @@ function storePreset(a) {
 	else {
 		new Noty({ type: 'error',  layout: 'topRight',  text: 'κανένα επιλεγμένο τετράγωνο',  timeout: 3000,  closeWith: ['click', 'button'],}).show();
 	}
+}
+
+var lastBoxTap = { id: "", at: 0 };
+function noteBoxTap(poly) {
+	if (!poly) return false;
+	var id = String(poly.id || "");
+	var now = Date.now();
+	if (id && id === lastBoxTap.id && now - lastBoxTap.at < 450) {
+		lastBoxTap = { id: "", at: 0 };
+		if (window.AnnoSuggest && AnnoSuggest.edit) AnnoSuggest.edit(poly);
+		return true;
+	}
+	lastBoxTap = { id: id, at: now };
+	return false;
 }
 
 function boxIsLocked(poly) {

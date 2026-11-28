@@ -412,40 +412,55 @@ html.theme-dark #comboPick option {
 	text-align: center;
 	margin: 0;
 }
-#hitsPad {
+#hitsPad { display: none !important; }
+/* Small Enter in the location toolbar, same 24px row, does not sit in the old 30px hits column. */
+#tpointstools #annoEnter {
 	position: absolute;
-	z-index: 7;
-	display: none;
+	top: 0;
+	right: 0;
+	height: 24px;
+	width: auto;
+	min-width: 0;
+	margin: 0;
+	padding: 0 7px;
+	border: 0;
+	border-radius: 4px;
+	background: rgba(240, 180, 41, 0.92);
+	color: #1a1408;
+	font-family: "Didact Gothic", sans-serif;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 24px;
+	cursor: pointer;
+	z-index: 1;
+}
+#tpointstools #annoEnter:hover { filter: brightness(1.08); }
+html.theme-dark #tpointstools #annoEnter {
+	background: rgba(240, 180, 41, 0.92);
+	color: #1a1408;
+}
+#quickPick .qp-enter-row {
+	display: flex;
 	align-items: center;
 	gap: 4px;
-	padding: 3px;
-	border-radius: 8px;
-	background: #1c2830;
-	color: #fff;
-	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-	font-family: "Didact Gothic", sans-serif;
-	font-size: 14px;
-	font-weight: bold;
-	white-space: nowrap;
+	margin: 0 0 3px;
 }
-#hitsPad.on { display: flex; }
-#hitsPad button {
-	width: 28px;
-	height: 28px;
-	border: 0;
-	border-radius: 6px;
-	background: #f0b429;
-	color: #1a1408;
-	font-family: inherit;
-	font-size: 18px;
-	font-weight: bold;
-	line-height: 28px;
-	padding: 0;
-	cursor: pointer;
+#quickPick .qp-enter-row button.qp-item {
+	flex: 1;
+	width: auto;
+	margin: 0;
+	min-width: 0;
 }
-#hitsPad span {
-	min-width: 58px;
+#quickPick .qp-enter-row button.qp-ok {
+	flex: 0 0 auto;
+	width: auto;
+	min-width: 0;
+	margin: 0;
+	padding: 3px 8px;
+	font-size: 11px;
+	font-weight: 700;
 	text-align: center;
+	line-height: 18px;
 }
 #brandstools #brandsabc.clicked,
 #tpointstools #tpointsabc.clicked,
